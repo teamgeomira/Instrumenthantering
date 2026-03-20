@@ -39,7 +39,8 @@
         .instrument-type-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; margin-left: 8px; }
         .type-totalstation { background-color: #dbeafe; color: #1e40af; }
         .type-gps { background-color: #d1fae5; color: #065f46; }
-        .internet-warning { background-color: #fef3c7; color: #92400e; }
+        .error-message { background-color: #fee2e2; color: #991b1b; padding: 8px 12px; border-radius: 8px; font-size: 0.75rem; margin-top: 8px; display: none; }
+        .info-message { background-color: #dbeafe; color: #1e40af; padding: 8px 12px; border-radius: 8px; font-size: 0.75rem; margin-top: 8px; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
@@ -242,6 +243,9 @@
                 <h2 class="text-xl font-bold">Lägg till service</h2>
                 <button onclick="closeModal('serviceModal')" class="text-gray-500 text-2xl">&times;</button>
             </div>
+            <div id="cloudinaryInfo" class="info-message mb-3 hidden">
+                ⚠️ Upload preset "instrument_certificates" saknas. <a href="https://cloudinary.com/console/settings/upload" target="_blank" class="underline">Klicka här för att skapa det</a> i Cloudinary-inställningarna (Signing mode: Unsigned).
+            </div>
             <form id="serviceForm">
                 <input type="hidden" id="serviceInstrumentId">
                 <input type="hidden" id="serviceId">
@@ -252,10 +256,12 @@
                 <div class="mb-3">
                     <label class="block text-sm font-medium">Certifikat (PDF/bild)</label>
                     <div class="flex gap-2">
-                        <input type="text" id="serviceCertUrl" placeholder="Välj fil för att ladda upp" class="flex-1 border rounded p-2 bg-gray-50" readonly>
+                        <input type="text" id="serviceCertUrl" placeholder="URL till certifikat (kan vara länk eller ladda upp)" class="flex-1 border rounded p-2">
                         <button type="button" id="uploadCertBtn" class="bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600">Ladda upp</button>
                     </div>
                     <div id="certPreview" class="mt-1 text-xs text-gray-500"></div>
+                    <div id="uploadError" class="error-message"></div>
+                    <p class="text-xs text-gray-400 mt-2">💡 Tips: Om uppladdning inte fungerar, klistra in en direktlänk till filen.</p>
                 </div>
                 <div class="mb-3">
                     <label class="block text-sm font-medium">Anteckningar</label>
@@ -338,7 +344,7 @@
 
         // Cloudinary config
         const cloudName = 'dc1zqri3o';
-        const uploadPreset = 'instrument_certificates';
+        const uploadPreset = 'instrument_certificates'; // SKAPA DETTA PRESET I CLOUDINARY!
 
         let currentUser = null;
         let instruments = [];
@@ -764,6 +770,7 @@
             document.getElementById('serviceId').value = '';
             document.getElementById('serviceCertUrl').value = '';
             document.getElementById('certPreview').innerHTML = '';
+            document.getElementById('uploadError').style.display = 'none';
             openModal('serviceModal');
         }
         async function saveService(e) {
@@ -843,8 +850,12 @@
             }
         }
 
-        // Cloudinary uppladdning
+        // Cloudinary uppladdning med felhantering
         function uploadToCloudinary(fieldId, previewId, isImage = false) {
+            const errorDiv = document.getElementById('uploadError');
+            errorDiv.style.display = 'none';
+            
+            // Kontrollera om preset finns
             const widget = cloudinary.createUploadWidget({
                 cloudName: cloudName,
                 uploadPreset: uploadPreset,
@@ -853,7 +864,8 @@
             }, (error, result) => {
                 if (error) {
                     console.error('Cloudinary error:', error);
-                    alert('Fel vid uppladdning: ' + (error.message || 'Okänt fel'));
+                    errorDiv.innerHTML = '❌ Uppladdning misslyckades. Kontrollera att upload preset "instrument_certificates" finns i Cloudinary. <a href="https://cloudinary.com/console/settings/upload" target="_blank" class="underline">Skapa det här</a> (Signing mode: Unsigned).';
+                    errorDiv.style.display = 'block';
                     return;
                 }
                 if (result && result.event === 'success') {
@@ -868,6 +880,9 @@
                     } else if (previewId) {
                         document.getElementById(previewId).innerHTML = `<a href="${url}" target="_blank" class="text-blue-500">📄 Öppna certifikat</a>`;
                     }
+                    errorDiv.style.display = 'none';
+                } else if (result && result.event === 'close') {
+                    console.log('Widget closed');
                 }
             });
             widget.open();
