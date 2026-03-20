@@ -24,13 +24,22 @@
         .log-badge-create { background: #d1fae5; color: #065f46; }
         .log-badge-update { background: #fef3c7; color: #92400e; }
         .log-badge-delete { background: #fee2e2; color: #991b1b; }
-        .service-item, .calibration-item { background: #f8fafc; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .service-item { background: #f8fafc; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
         .report-filters { background: white; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .field-group { margin-bottom: 12px; }
         .field-label { font-weight: 600; font-size: 0.875rem; margin-bottom: 4px; display: block; }
-        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; background: #e2e8f0; }
-        .ccp-active { background: #fef3c7; color: #92400e; }
-        .ccp-expired { background: #fee2e2; color: #991b1b; }
+        .image-preview { max-width: 80px; max-height: 80px; border-radius: 8px; margin-top: 8px; border: 1px solid #e2e8f0; }
+        .instrument-count { background: #e2e8f0; padding: 4px 12px; border-radius: 20px; font-size: 0.875rem; }
+        .alert-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+        .alert-red { background-color: #fee2e2; color: #991b1b; }
+        .alert-yellow { background-color: #fef3c7; color: #92400e; }
+        .alert-green { background-color: #d1fae5; color: #065f46; }
+        .alert-gray { background-color: #e5e7eb; color: #374151; }
+        .summary-card { background: white; border-radius: 12px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .instrument-type-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; margin-left: 8px; }
+        .type-totalstation { background-color: #dbeafe; color: #1e40af; }
+        .type-gps { background-color: #d1fae5; color: #065f46; }
+        .internet-warning { background-color: #fef3c7; color: #92400e; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
@@ -65,7 +74,7 @@
         <header class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-2xl p-6 mb-8 flex flex-wrap justify-between items-center gap-4">
             <div>
                 <h1 class="text-2xl font-bold">Instrumenthantering</h1>
-                <p>Service & kalibrering</p>
+                <p>Service & underhåll med varningssystem</p>
             </div>
             <div class="flex gap-3 items-center">
                 <span id="userName" class="bg-white/20 px-3 py-1 rounded-full"></span>
@@ -73,10 +82,29 @@
             </div>
         </header>
 
+        <!-- Sammanfattning av varningar -->
+        <div id="alertSummary" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <!-- Dynamisk innehåll -->
+        </div>
+
+        <!-- Statistik -->
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-semibold text-gray-700">Instrument</h2>
+            <span id="instrumentCount" class="instrument-count">0 instrument</span>
+        </div>
+
         <!-- Rapportsektion -->
         <div class="report-filters mb-6">
             <h2 class="text-lg font-bold mb-3">Rapporter</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-sm font-medium">Instrumenttyp</label>
+                    <select id="reportTypeFilter" class="w-full border rounded p-2">
+                        <option value="all">Alla</option>
+                        <option value="totalstation">Total Station</option>
+                        <option value="gps">GPS</option>
+                    </select>
+                </div>
                 <div>
                     <label class="block text-sm font-medium">Service - från datum</label>
                     <input type="date" id="reportServiceFrom" class="w-full border rounded p-2">
@@ -86,7 +114,7 @@
                     <input type="date" id="reportServiceTo" class="w-full border rounded p-2">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium">Kalibrering - år</label>
+                    <label class="block text-sm font-medium">Kalibrering/internet - år</label>
                     <select id="reportCalYear" class="w-full border rounded p-2">
                         <option value="all">Alla år</option>
                         <option value="2024">2024</option>
@@ -121,6 +149,13 @@
             <form id="instrumentForm">
                 <input type="hidden" id="instrumentId">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="field-group md:col-span-2">
+                        <label class="field-label">Instrumenttyp *</label>
+                        <select id="instType" required class="w-full border rounded p-2">
+                            <option value="totalstation">Total Station</option>
+                            <option value="gps">GPS</option>
+                        </select>
+                    </div>
                     <div class="field-group">
                         <label class="field-label">Utrustningsnummer</label>
                         <input type="text" id="instEqNum" class="w-full border rounded p-2">
@@ -142,16 +177,31 @@
                         <input type="date" id="instDeliveryDate" class="w-full border rounded p-2">
                     </div>
                     <div class="field-group">
-                        <label class="field-label">CCP</label>
-                        <input type="text" id="instCCP" class="w-full border rounded p-2">
+                        <label class="field-label">Nästa service</label>
+                        <input type="date" id="instNextService" class="w-full border rounded p-2">
                     </div>
-                    <div class="field-group">
-                        <label class="field-label">CCP Typ</label>
-                        <input type="text" id="instCCPType" class="w-full border rounded p-2">
+                    <!-- Total Station-specifika fält -->
+                    <div id="totalStationFields" class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="field-group">
+                            <label class="field-label">CCP</label>
+                            <input type="text" id="instCCP" class="w-full border rounded p-2">
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label">CCP Typ</label>
+                            <input type="text" id="instCCPType" class="w-full border rounded p-2">
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label">CCP Slutdatum</label>
+                            <input type="date" id="instCCPEnd" class="w-full border rounded p-2">
+                        </div>
                     </div>
-                    <div class="field-group">
-                        <label class="field-label">CCP Slutdatum</label>
-                        <input type="date" id="instCCPEnd" class="w-full border rounded p-2">
+                    <!-- GPS-specifika fält -->
+                    <div id="gpsFields" class="md:col-span-2 grid grid-cols-1 gap-4 hidden">
+                        <div class="field-group">
+                            <label class="field-label">Nästa internet/data (SIM-kort giltighet)</label>
+                            <input type="date" id="instNextInternet" class="w-full border rounded p-2">
+                            <p class="text-xs text-gray-500 mt-1">Datum då internet/data-planen går ut</p>
+                        </div>
                     </div>
                     <div class="field-group">
                         <label class="field-label">Version</label>
@@ -160,6 +210,17 @@
                     <div class="field-group">
                         <label class="field-label">Artikelnummer</label>
                         <input type="text" id="instArtNo" class="w-full border rounded p-2">
+                    </div>
+                    <div class="field-group md:col-span-2">
+                        <label class="field-label">Ikon / bild (URL)</label>
+                        <div class="flex gap-2">
+                            <input type="url" id="instIconUrl" placeholder="https://... eller ladda upp bild" class="flex-1 border rounded p-2">
+                            <button type="button" id="uploadIconBtn" class="bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600">Ladda upp</button>
+                        </div>
+                        <div id="iconPreview" class="mt-2 hidden">
+                            <img id="iconPreviewImg" class="image-preview">
+                            <button type="button" onclick="clearIconPreview()" class="text-xs text-red-500 mt-1">Ta bort bild</button>
+                        </div>
                     </div>
                     <div class="field-group md:col-span-2">
                         <label class="field-label">Anteckningar</label>
@@ -174,7 +235,7 @@
         </div>
     </div>
 
-    <!-- Modal för service -->
+    <!-- Modal för service (gemensam för båda typerna) -->
     <div id="serviceModal" class="modal">
         <div class="modal-content">
             <div class="flex justify-between items-center mb-4">
@@ -208,7 +269,7 @@
         </div>
     </div>
 
-    <!-- Modal för kalibrering -->
+    <!-- Modal för kalibrering (endast Total Station) -->
     <div id="calibrationModal" class="modal">
         <div class="modal-content">
             <div class="flex justify-between items-center mb-4">
@@ -284,25 +345,83 @@
         let services = [];
         let calibrations = [];
 
-        // ALLA INSTRUMENT DIREKT I KODEN (från din tabell)
-        const defaultInstruments = [
-            { equipmentNumber: "3709311", product: "CS15 Kontrollenhet WinCE TPS Radio", serialNumber: "1591023", reference: "MARIA", deliveryDate: "2010-03-08", ccp: "", ccpType: "", ccpEndDate: "", version: "v5.70.1671", articleNumber: "767871" },
-            { equipmentNumber: "3744057", product: "TS30 0.5\", Totalstation med EDM/ATR/PS", serialNumber: "360941", reference: "FABIAN", deliveryDate: "2017-09-18", ccp: "", ccpType: "", ccpEndDate: "", version: "v", articleNumber: "99757130" },
-            { equipmentNumber: "3862302", product: "CS15 Kontrollenhet WinCE TPS Radio", serialNumber: "1591907", reference: "VINICIO", deliveryDate: "2017-03-09", ccp: "", ccpType: "", ccpEndDate: "", version: "v6.04.0046", articleNumber: "99767871" },
-            { equipmentNumber: "4824066", product: "TS15 P 3\" R400, totalstation m. SnabbSö", serialNumber: "1616533", reference: "DAVID", deliveryDate: "2018-10-31", ccp: "40679978", ccpType: "CCP bas", ccpEndDate: "2026-10-30", version: "v9.06.0029", articleNumber: "99780863" },
-            { equipmentNumber: "5343913", product: "TS15 P 1\" R400, totalstation m. SnabbSö", serialNumber: "1620913", reference: "VINICIO", deliveryDate: "2017-06-19", ccp: "40675446", ccpType: "CCP bas", ccpEndDate: "2026-09-17", version: "v9.06.0029", articleNumber: "99780865" },
-            { equipmentNumber: "5470915", product: "TS15 P 1\" R400, totalstation m. SnabbSö", serialNumber: "1621914", reference: "ERIKA", deliveryDate: "2017-03-09", ccp: "", ccpType: "CCP bas", ccpEndDate: "2025-10-13", version: "v9.6.29", articleNumber: "99780865" },
-            { equipmentNumber: "5586111", product: "CS15 Field Controller", serialNumber: "2895638", reference: "ALEXANDER", deliveryDate: "2017-06-19", ccp: "", ccpType: "", ccpEndDate: "", version: "v6.04.0046", articleNumber: "99810855" },
-            { equipmentNumber: "6528771", product: "CS20 3.75G Basic Field Controller", serialNumber: "2423259", reference: "ERIKA", deliveryDate: "2016-09-27", ccp: "", ccpType: "CCP bas", ccpEndDate: "2024-09-13", version: "v7.3.58", articleNumber: "823165" },
-            { equipmentNumber: "6534029", product: "CS20 3.75G Field Controller", serialNumber: "2428517", reference: "DAVID", deliveryDate: "2018-10-31", ccp: "", ccpType: "CCP bas", ccpEndDate: "2024-11-05", version: "v7.3.58", articleNumber: "99823165" },
-            { equipmentNumber: "6786383", product: "TS16 P 1\" R500, total station with PS", serialNumber: "3200914", reference: "FERNANDO", deliveryDate: "2019-02-06", ccp: "40697150", ccpType: "CCP bas", ccpEndDate: "2027-02-17", version: "v9.10.78", articleNumber: "99822449" },
-            { equipmentNumber: "6853669", product: "RH17, Bluetooth RadioHandle", serialNumber: "3102050", reference: "DAVID", deliveryDate: "2019-02-06", ccp: "", ccpType: "", ccpEndDate: "", version: "v", articleNumber: "99818467" },
-            { equipmentNumber: "7135816", product: "TS16 P 1\" R500, total station with PS", serialNumber: "3203454", reference: "ALEXANDER", deliveryDate: "2016-09-27", ccp: "40678957", ccpType: "CCP bas", ccpEndDate: "2026-10-20", version: "v9.0.262", articleNumber: "822449" },
-            { equipmentNumber: "7287074", product: "RH17, Bluetooth RadioHandle", serialNumber: "3104824", reference: "ANDREAS", deliveryDate: "2016-09-27", ccp: "", ccpType: "", ccpEndDate: "", version: "v", articleNumber: "818467" },
-            { equipmentNumber: "7570165", product: "RH17, Bluetooth RadioHandle", serialNumber: "3106573", reference: "ERIKA", deliveryDate: "2017-09-19", ccp: "", ccpType: "", ccpEndDate: "", version: "v", articleNumber: "818467" },
-            { equipmentNumber: "10232352", product: "CloudWorx-EE for SP3D float", serialNumber: "1", reference: "", deliveryDate: "2012-08-10", ccp: "", ccpType: "", ccpEndDate: "", version: "v", articleNumber: "772253" },
-            { equipmentNumber: "31024482", product: "GS18 T LTE Performance", serialNumber: "4903556", reference: "ANDREAS", deliveryDate: "2024-03-25", ccp: "40708047", ccpType: "CCP bas", ccpEndDate: "2027-04-14", version: "v8.10", articleNumber: "855300" }
-        ];
+        // Hjälpfunktion för att få svensk datum
+        function getSwedenDate() {
+            const now = new Date();
+            return new Date(now.toLocaleString("en-US", {timeZone: "Europe/Stockholm"}));
+        }
+
+        // Bedöm service-status
+        function getServiceStatus(nextServiceDate) {
+            if (!nextServiceDate) return { color: 'gray', text: 'Inget datum' };
+            const today = getSwedenDate();
+            const next = new Date(nextServiceDate);
+            const diffDays = Math.ceil((next - today) / (1000 * 60 * 60 * 24));
+            if (diffDays < 0) return { color: 'red', text: `Försenad ${Math.abs(diffDays)} dagar` };
+            if (diffDays <= 30) return { color: 'yellow', text: `Om ${diffDays} dagar` };
+            return { color: 'green', text: `${diffDays} dagar kvar` };
+        }
+
+        // Bedöm internet-status för GPS
+        function getInternetStatus(nextInternetDate) {
+            if (!nextInternetDate) return { color: 'gray', text: 'Inget datum' };
+            const today = getSwedenDate();
+            const next = new Date(nextInternetDate);
+            const diffDays = Math.ceil((next - today) / (1000 * 60 * 60 * 24));
+            if (diffDays < 0) return { color: 'red', text: `Utgånget ${Math.abs(diffDays)} dagar sedan` };
+            if (diffDays <= 30) return { color: 'yellow', text: `Om ${diffDays} dagar` };
+            return { color: 'green', text: `${diffDays} dagar kvar` };
+        }
+
+        // Bedöm kalibreringsstatus för aktuell månad (endast Total Station)
+        function getCurrentMonthCalibrationStatus(instrumentId) {
+            const today = getSwedenDate();
+            const currentYear = today.getFullYear();
+            const currentMonth = today.getMonth() + 1;
+            const cal = calibrations.find(c => c.instrumentId === instrumentId && c.year === currentYear && c.month === currentMonth);
+            if (!cal) return { color: 'red', text: 'Saknas denna månad' };
+            if (!cal.passed) return { color: 'red', text: 'Ej godkänd' };
+            return { color: 'green', text: 'Godkänd' };
+        }
+
+        // Uppdatera sammanfattningskort
+        function updateAlertSummary() {
+            const container = document.getElementById('alertSummary');
+            let serviceOverdue = 0, serviceSoon = 0, calibrationMissing = 0, internetExpiring = 0;
+            
+            instruments.forEach(inst => {
+                const serviceStatus = getServiceStatus(inst.next_service);
+                if (serviceStatus.color === 'red') serviceOverdue++;
+                else if (serviceStatus.color === 'yellow') serviceSoon++;
+                
+                if (inst.type === 'totalstation') {
+                    const calStatus = getCurrentMonthCalibrationStatus(inst.id);
+                    if (calStatus.color === 'red') calibrationMissing++;
+                } else if (inst.type === 'gps') {
+                    const internetStatus = getInternetStatus(inst.next_internet);
+                    if (internetStatus.color === 'red' || internetStatus.color === 'yellow') internetExpiring++;
+                }
+            });
+            
+            container.innerHTML = `
+                <div class="summary-card flex items-center gap-3">
+                    <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                    <span>Försenad service: <strong>${serviceOverdue}</strong></span>
+                </div>
+                <div class="summary-card flex items-center gap-3">
+                    <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <span>Service inom 30 dagar: <strong>${serviceSoon}</strong></span>
+                </div>
+                <div class="summary-card flex items-center gap-3">
+                    <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                    <span>Saknar kalibrering: <strong>${calibrationMissing}</strong></span>
+                </div>
+                <div class="summary-card flex items-center gap-3">
+                    <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <span>Internet/data utgår snart: <strong>${internetExpiring}</strong></span>
+                </div>
+            `;
+        }
 
         // Logging
         function logAction(action, entityType, entityId, oldData, newData) {
@@ -321,56 +440,44 @@
             database.ref('instrument_logs').push(log).catch(console.error);
         }
 
-        // Initiera data om tomt
-        async function initializeDataIfEmpty() {
-            const snapshot = await database.ref('instruments').once('value');
-            if (!snapshot.exists()) {
-                console.log('Inga instrument hittades. Laddar från inbyggd data...');
-                const updates = {};
-                for (const inst of defaultInstruments) {
-                    const newRef = database.ref('instruments').push();
-                    const data = {
-                        ...inst,
-                        name: inst.product,
-                        notes: '',
-                        createdAt: new Date().toISOString(),
-                        createdBy: 'system'
-                    };
-                    updates[`instruments/${newRef.key}`] = data;
-                }
-                await database.ref().update(updates);
-                console.log(`${defaultInstruments.length} instrument laddade!`);
-            }
-        }
-
-        // Ladda data
+        // Ladda data från Firebase
         function loadData() {
             database.ref('instruments').on('value', snap => {
                 instruments = [];
-                snap.forEach(child => instruments.push({ id: child.key, ...child.val() }));
+                snap.forEach(child => {
+                    const instrument = { id: child.key, ...child.val() };
+                    instruments.push(instrument);
+                });
+                console.log(`Laddade ${instruments.length} instrument från Firebase`);
+                updateInstrumentCount();
                 renderInstruments();
+                updateAlertSummary();
             });
             database.ref('services').on('value', snap => {
                 services = [];
                 snap.forEach(child => services.push({ id: child.key, ...child.val() }));
                 renderInstruments();
+                updateAlertSummary();
             });
             database.ref('calibrations').on('value', snap => {
                 calibrations = [];
                 snap.forEach(child => calibrations.push({ id: child.key, ...child.val() }));
                 renderInstruments();
+                updateAlertSummary();
             });
         }
 
-        // Kontrollera om CCP är utgången
-        function isCcpExpired(ccpEndDate) {
-            if (!ccpEndDate) return false;
-            const today = new Date();
-            const endDate = new Date(ccpEndDate);
-            return endDate < today;
+        function updateInstrumentCount() {
+            const count = instruments.length;
+            document.getElementById('instrumentCount').innerHTML = `${count} instrument`;
         }
 
-        // Visa instrument i grid
+        // Hämta visningsnamn för instrument
+        function getInstrumentDisplayName(inst) {
+            return inst.product || inst.name || 'Okänt instrument';
+        }
+
+        // Visa instrument i grid med varningsindikatorer
         function renderInstruments() {
             const container = document.getElementById('instrumentsContainer');
             container.innerHTML = '';
@@ -378,33 +485,55 @@
                 container.innerHTML = '<p class="text-center col-span-full text-gray-500">Inga instrument än. Klicka på "Nytt instrument".</p>';
                 return;
             }
-            instruments.forEach(inst => {
+            const sortedInstruments = [...instruments].sort((a, b) => (a.product || a.name || '').localeCompare(b.product || b.name || ''));
+            sortedInstruments.forEach(inst => {
                 const instServices = services.filter(s => s.instrumentId === inst.id);
-                const instCalibrations = calibrations.filter(c => c.instrumentId === inst.id);
-                const ccpExpired = isCcpExpired(inst.ccpEndDate);
+                const serviceStatus = getServiceStatus(inst.next_service);
+                const typeClass = inst.type === 'gps' ? 'type-gps' : 'type-totalstation';
+                const typeText = inst.type === 'gps' ? 'GPS' : 'Total Station';
+                const displayName = getInstrumentDisplayName(inst);
                 
                 const card = document.createElement('div');
                 card.className = 'instrument-card';
                 card.onclick = () => showInstrumentDetails(inst.id);
+                
+                let statusHtml = `
+                    <div class="mt-2 flex flex-wrap gap-2">
+                        <span class="alert-badge alert-${serviceStatus.color}">🔧 Service: ${serviceStatus.text}</span>
+                `;
+                
+                if (inst.type === 'totalstation') {
+                    const calStatus = getCurrentMonthCalibrationStatus(inst.id);
+                    statusHtml += `<span class="alert-badge alert-${calStatus.color}">📅 Kalibrering: ${calStatus.text}</span>`;
+                } else if (inst.type === 'gps') {
+                    const internetStatus = getInternetStatus(inst.next_internet);
+                    statusHtml += `<span class="alert-badge alert-${internetStatus.color}">📶 Internet: ${internetStatus.text}</span>`;
+                }
+                statusHtml += `</div>`;
+                
                 card.innerHTML = `
                     <div class="flex items-start gap-3">
-                        <div class="h-12 w-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center text-2xl">🔧</div>
+                        ${inst.iconUrl ? `<img src="${inst.iconUrl}" class="h-12 w-12 object-cover rounded-full" onerror="this.src='https://via.placeholder.com/48?text=?'">` : `<div class="h-12 w-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center text-2xl">${inst.type === 'gps' ? '📡' : '🔧'}</div>`}
                         <div class="flex-1">
-                            <h3 class="font-bold text-lg">${escapeHtml(inst.product || inst.name)}</h3>
+                            <div class="flex items-center gap-2">
+                                <h3 class="font-bold text-lg">${escapeHtml(displayName)}</h3>
+                                <span class="instrument-type-badge ${typeClass}">${typeText}</span>
+                            </div>
                             <p class="text-sm text-gray-600">Serie: ${inst.serialNumber || '-'} | Ref: ${inst.reference || '-'}</p>
                             <p class="text-xs text-gray-500">Utrustningsnr: ${inst.equipmentNumber || '-'}</p>
-                            ${inst.ccpEndDate ? `<p class="text-xs ${ccpExpired ? 'text-red-600 font-semibold' : 'text-blue-600'}">CCP: ${inst.ccpEndDate} ${ccpExpired ? '(Utgången!)' : ''}</p>` : ''}
+                            ${inst.type === 'totalstation' && inst.ccpEndDate ? `<p class="text-xs text-blue-600">CCP: ${inst.ccpEndDate}</p>` : ''}
+                            ${inst.type === 'gps' && inst.next_internet ? `<p class="text-xs ${getInternetStatus(inst.next_internet).color === 'red' ? 'text-red-600' : 'text-blue-600'}">Internet giltigt till: ${inst.next_internet}</p>` : ''}
                         </div>
                     </div>
+                    ${statusHtml}
                     <div class="mt-3 flex flex-wrap gap-2">
                         <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Service: ${instServices.length}</span>
-                        <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Kalibrering: ${instCalibrations.length}</span>
                         <button onclick="event.stopPropagation(); editInstrument('${inst.id}')" class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">Redigera</button>
                         <button onclick="event.stopPropagation(); deleteInstrument('${inst.id}')" class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Ta bort</button>
                     </div>
                     <div class="mt-2 border-t pt-2 text-sm flex gap-3">
                         <button onclick="event.stopPropagation(); addService('${inst.id}')" class="text-blue-600">+ Lägg till service</button>
-                        <button onclick="event.stopPropagation(); addCalibration('${inst.id}')" class="text-green-600">+ Lägg till kalibrering</button>
+                        ${inst.type === 'totalstation' ? `<button onclick="event.stopPropagation(); addCalibration('${inst.id}')" class="text-green-600">+ Lägg till kalibrering</button>` : ''}
                     </div>
                 `;
                 container.appendChild(card);
@@ -413,33 +542,58 @@
 
         function showInstrumentDetails(instId) {
             const inst = instruments.find(i => i.id === instId);
+            if (!inst) return;
             const instServices = services.filter(s => s.instrumentId === instId).sort((a,b) => new Date(b.date) - new Date(a.date));
-            const instCalibrations = calibrations.filter(c => c.instrumentId === instId).sort((a,b) => (b.year - a.year) || (b.month - a.month));
+            const serviceStatus = getServiceStatus(inst.next_service);
+            const typeText = inst.type === 'gps' ? 'GPS' : 'Total Station';
             
             const servicesHtml = instServices.map(s => `
-                <div class="service-item">
-                    <div>
-                        <div class="font-medium">${formatDate(s.date)}</div>
-                        ${s.certificateUrl ? `<a href="${s.certificateUrl}" target="_blank" class="text-blue-500 text-sm">📄 Visa certifikat</a>` : ''}
-                        <div class="text-sm text-gray-600">${s.notes || ''}</div>
+                <div class="bg-gray-50 rounded-lg p-3 mb-2">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="font-medium">${formatDate(s.date)}</div>
+                            <div class="text-sm text-gray-600">${s.notes || ''}</div>
+                            ${s.certificateUrl ? `<a href="${s.certificateUrl}" target="_blank" class="text-blue-500 text-sm mt-1 inline-block">📄 Visa certifikat</a>` : ''}
+                        </div>
+                        <button onclick="deleteService('${s.id}')" class="text-red-500 text-sm">🗑️</button>
                     </div>
-                    <button onclick="deleteService('${s.id}')" class="text-red-500 text-sm">🗑️</button>
                 </div>
             `).join('');
             
-            const calibrationsHtml = instCalibrations.map(c => `
-                <div class="calibration-item">
-                    <div>
-                        <div class="font-medium">${c.year}-${String(c.month).padStart(2,'0')} ${c.passed ? '✅ Godkänd' : '❌ Ej godkänd'}</div>
-                        <div class="text-sm text-gray-600">${c.notes || ''}</div>
+            let extraFields = '';
+            if (inst.type === 'totalstation') {
+                const calStatus = getCurrentMonthCalibrationStatus(inst.id);
+                const instCalibrations = calibrations.filter(c => c.instrumentId === instId).sort((a,b) => (b.year - a.year) || (b.month - a.month));
+                const calibrationsHtml = instCalibrations.map(c => `
+                    <div class="bg-gray-50 rounded-lg p-3 mb-2">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <div class="font-medium">${c.year}-${String(c.month).padStart(2,'0')} ${c.passed ? '✅ Godkänd' : '❌ Ej godkänd'}</div>
+                                <div class="text-sm text-gray-600">${c.notes || ''}</div>
+                            </div>
+                            <button onclick="deleteCalibration('${c.id}')" class="text-red-500 text-sm">🗑️</button>
+                        </div>
                     </div>
-                    <button onclick="deleteCalibration('${c.id}')" class="text-red-500 text-sm">🗑️</button>
-                </div>
-            `).join('');
+                `).join('');
+                extraFields = `
+                    <div><strong>CCP:</strong> ${inst.ccp || '-'} ${inst.ccpType ? `(${inst.ccpType})` : ''}</div>
+                    <div><strong>CCP Slutdatum:</strong> ${inst.ccpEndDate || '-'}</div>
+                    <hr>
+                    <div><strong class="text-green-600">Kalibreringshistorik (${instCalibrations.length})</strong></div>
+                    <div>${calibrationsHtml || '<p class="text-gray-500">Inga kalibreringsposter.</p>'}</div>
+                    <div class="mt-2"><button onclick="addCalibration('${inst.id}')" class="text-sm bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600">+ Ny kalibrering</button></div>
+                `;
+            } else if (inst.type === 'gps') {
+                const internetStatus = getInternetStatus(inst.next_internet);
+                extraFields = `
+                    <div><strong>Nästa internet/data:</strong> ${inst.next_internet || '-'} <span class="alert-badge alert-${internetStatus.color} ml-2">${internetStatus.text}</span></div>
+                `;
+            }
             
             showModalMessage(
-                `${inst.product || inst.name}`, 
+                getInstrumentDisplayName(inst),
                 `<div class="space-y-4">
+                    <div><span class="instrument-type-badge ${inst.type === 'gps' ? 'type-gps' : 'type-totalstation'}">${typeText}</span></div>
                     <div class="grid grid-cols-2 gap-2 text-sm">
                         <div><strong>Utrustningsnummer:</strong> ${inst.equipmentNumber || '-'}</div>
                         <div><strong>Serienummer:</strong> ${inst.serialNumber || '-'}</div>
@@ -448,16 +602,15 @@
                         <div><strong>Version:</strong> ${inst.version || '-'}</div>
                         <div><strong>Artikelnummer:</strong> ${inst.articleNumber || '-'}</div>
                     </div>
-                    <div><strong>CCP:</strong> ${inst.ccp || '-'} ${inst.ccpType ? `(${inst.ccpType})` : ''}</div>
-                    <div><strong>CCP Slutdatum:</strong> ${inst.ccpEndDate || '-'}</div>
+                    <div><strong>Nästa service:</strong> ${inst.next_service || '-'} <span class="alert-badge alert-${serviceStatus.color} ml-2">${serviceStatus.text}</span></div>
+                    ${extraFields}
+                    ${inst.iconUrl ? `<div><strong>Bild:</strong> <img src="${inst.iconUrl}" class="h-16 w-16 object-cover rounded mt-1"></div>` : ''}
                     <div><strong>Anteckningar:</strong> ${inst.notes || '-'}</div>
                     <hr>
                     <div><strong class="text-blue-600">Servicehistorik (${instServices.length})</strong></div>
                     <div>${servicesHtml || '<p class="text-gray-500">Inga serviceregistreringar.</p>'}</div>
-                    <hr>
-                    <div><strong class="text-green-600">Kalibreringshistorik (${instCalibrations.length})</strong></div>
-                    <div>${calibrationsHtml || '<p class="text-gray-500">Inga kalibreringsposter.</p>'}</div>
-                </div>`, 
+                    <div class="mt-2"><button onclick="addService('${inst.id}')" class="text-sm bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">+ Ny service</button></div>
+                </div>`,
                 true
             );
         }
@@ -481,11 +634,47 @@
             document.body.appendChild(modal);
         }
 
+        // Visa/dölj fält beroende på typ
+        function toggleFieldsByType() {
+            const type = document.getElementById('instType').value;
+            const totalStationFields = document.getElementById('totalStationFields');
+            const gpsFields = document.getElementById('gpsFields');
+            
+            if (type === 'totalstation') {
+                totalStationFields.classList.remove('hidden');
+                gpsFields.classList.add('hidden');
+            } else {
+                totalStationFields.classList.add('hidden');
+                gpsFields.classList.remove('hidden');
+            }
+        }
+
+        // Förhandsgranskning av bild
+        function updateIconPreview() {
+            const url = document.getElementById('instIconUrl').value.trim();
+            const previewDiv = document.getElementById('iconPreview');
+            const previewImg = document.getElementById('iconPreviewImg');
+            if (url) {
+                previewImg.src = url;
+                previewImg.onerror = () => { previewImg.src = 'https://via.placeholder.com/80?text=Ogiltig+URL'; };
+                previewDiv.classList.remove('hidden');
+            } else {
+                previewDiv.classList.add('hidden');
+            }
+        }
+        function clearIconPreview() {
+            document.getElementById('instIconUrl').value = '';
+            document.getElementById('iconPreview').classList.add('hidden');
+        }
+
         // CRUD Instrument
         function newInstrument() {
             document.getElementById('instrumentModalTitle').innerText = 'Nytt instrument';
             document.getElementById('instrumentForm').reset();
             document.getElementById('instrumentId').value = '';
+            document.getElementById('iconPreview').classList.add('hidden');
+            document.getElementById('instType').value = 'totalstation';
+            toggleFieldsByType();
             openModal('instrumentModal');
         }
         function editInstrument(id) {
@@ -493,38 +682,55 @@
             if (!inst) return;
             document.getElementById('instrumentModalTitle').innerText = 'Redigera instrument';
             document.getElementById('instrumentId').value = inst.id;
+            document.getElementById('instType').value = inst.type || 'totalstation';
+            toggleFieldsByType();
             document.getElementById('instEqNum').value = inst.equipmentNumber || '';
             document.getElementById('instProduct').value = inst.product || '';
             document.getElementById('instSerial').value = inst.serialNumber || '';
             document.getElementById('instRef').value = inst.reference || '';
             document.getElementById('instDeliveryDate').value = inst.deliveryDate || '';
+            document.getElementById('instNextService').value = inst.next_service || '';
             document.getElementById('instCCP').value = inst.ccp || '';
             document.getElementById('instCCPType').value = inst.ccpType || '';
             document.getElementById('instCCPEnd').value = inst.ccpEndDate || '';
+            document.getElementById('instNextInternet').value = inst.next_internet || '';
             document.getElementById('instVersion').value = inst.version || '';
             document.getElementById('instArtNo').value = inst.articleNumber || '';
             document.getElementById('instNotes').value = inst.notes || '';
+            document.getElementById('instIconUrl').value = inst.iconUrl || '';
+            updateIconPreview();
             openModal('instrumentModal');
         }
         async function saveInstrument(e) {
             e.preventDefault();
             const id = document.getElementById('instrumentId').value;
+            const type = document.getElementById('instType').value;
+            
             const data = {
+                type: type,
                 equipmentNumber: document.getElementById('instEqNum').value.trim(),
                 product: document.getElementById('instProduct').value.trim(),
                 serialNumber: document.getElementById('instSerial').value.trim(),
                 reference: document.getElementById('instRef').value.trim(),
                 deliveryDate: document.getElementById('instDeliveryDate').value,
-                ccp: document.getElementById('instCCP').value.trim(),
-                ccpType: document.getElementById('instCCPType').value.trim(),
-                ccpEndDate: document.getElementById('instCCPEnd').value,
+                next_service: document.getElementById('instNextService').value,
                 version: document.getElementById('instVersion').value.trim(),
                 articleNumber: document.getElementById('instArtNo').value.trim(),
                 notes: document.getElementById('instNotes').value.trim(),
+                iconUrl: document.getElementById('instIconUrl').value.trim(),
                 name: document.getElementById('instProduct').value.trim(),
                 updatedAt: new Date().toISOString(),
                 updatedBy: currentUser.email
             };
+            
+            if (type === 'totalstation') {
+                data.ccp = document.getElementById('instCCP').value.trim();
+                data.ccpType = document.getElementById('instCCPType').value.trim();
+                data.ccpEndDate = document.getElementById('instCCPEnd').value;
+            } else if (type === 'gps') {
+                data.next_internet = document.getElementById('instNextInternet').value;
+            }
+            
             if (!data.product) { alert('Produkt måste anges'); return; }
             if (id) {
                 const old = instruments.find(i => i.id === id);
@@ -594,7 +800,7 @@
             }
         }
 
-        // Kalibrering CRUD
+        // Kalibrering CRUD (endast Total Station)
         function addCalibration(instrumentId) {
             document.getElementById('calibrationForm').reset();
             document.getElementById('calInstrumentId').value = instrumentId;
@@ -638,7 +844,7 @@
         }
 
         // Cloudinary uppladdning
-        function uploadToCloudinary(fieldId, previewId) {
+        function uploadToCloudinary(fieldId, previewId, isImage = false) {
             const widget = cloudinary.createUploadWidget({
                 cloudName: cloudName,
                 uploadPreset: uploadPreset,
@@ -653,7 +859,13 @@
                 if (result && result.event === 'success') {
                     const url = result.info.secure_url;
                     document.getElementById(fieldId).value = url;
-                    if (previewId) {
+                    if (previewId && isImage) {
+                        const previewDiv = document.getElementById(previewId);
+                        if (previewDiv) {
+                            previewDiv.innerHTML = `<img src="${url}" class="image-preview"><button type="button" onclick="clearIconPreview()" class="text-xs text-red-500 mt-1">Ta bort bild</button>`;
+                        }
+                        updateIconPreview();
+                    } else if (previewId) {
                         document.getElementById(previewId).innerHTML = `<a href="${url}" target="_blank" class="text-blue-500">📄 Öppna certifikat</a>`;
                     }
                 }
@@ -661,28 +873,36 @@
             widget.open();
         }
 
-        // Rapportexport (utan bild-URL)
+        // Rapportexport
         function exportReport() {
+            const typeFilter = document.getElementById('reportTypeFilter').value;
             const serviceFrom = document.getElementById('reportServiceFrom').value;
             const serviceTo = document.getElementById('reportServiceTo').value;
             const calYear = document.getElementById('reportCalYear').value;
 
-            let filteredServices = services;
+            let filteredInstruments = instruments;
+            if (typeFilter !== 'all') {
+                filteredInstruments = filteredInstruments.filter(i => i.type === typeFilter);
+            }
+            
+            let filteredServices = services.filter(s => filteredInstruments.some(inst => inst.id === s.instrumentId));
             if (serviceFrom) filteredServices = filteredServices.filter(s => s.date >= serviceFrom);
             if (serviceTo) filteredServices = filteredServices.filter(s => s.date <= serviceTo);
-            let filteredCalibrations = calibrations;
+            
+            let filteredCalibrations = calibrations.filter(c => filteredInstruments.some(inst => inst.id === c.instrumentId && inst.type === 'totalstation'));
             if (calYear !== 'all') filteredCalibrations = filteredCalibrations.filter(c => c.year == calYear);
 
             const wb = XLSX.utils.book_new();
 
-            const instData = instruments.map(inst => [
+            const instData = filteredInstruments.map(inst => [
                 inst.equipmentNumber || '', inst.product || '', inst.serialNumber || '', inst.reference || '',
-                inst.deliveryDate || '', inst.ccp || '', inst.ccpType || '', inst.ccpEndDate || '',
-                inst.version || '', inst.articleNumber || '', inst.notes || ''
+                inst.deliveryDate || '', inst.next_service || '', inst.type === 'totalstation' ? (inst.ccp || '') : '',
+                inst.type === 'totalstation' ? (inst.ccpType || '') : '', inst.type === 'totalstation' ? (inst.ccpEndDate || '') : '',
+                inst.type === 'gps' ? (inst.next_internet || '') : '', inst.version || '', inst.articleNumber || '', inst.notes || ''
             ]);
             const wsInstr = XLSX.utils.aoa_to_sheet([[
-                'Utrustningsnummer', 'Produkt', 'Serienummer', 'Min Referens', 'Leveransdatum', 
-                'CCP', 'CCP Typ', 'CCP Slutdatum', 'Version', 'Artikelnummer', 'Anteckningar'
+                'Utrustningsnummer', 'Produkt', 'Serienummer', 'Min Referens', 'Leveransdatum', 'Nästa service',
+                'CCP', 'CCP Typ', 'CCP Slutdatum', 'Nästa internet (GPS)', 'Version', 'Artikelnummer', 'Anteckningar'
             ], ...instData]);
             XLSX.utils.book_append_sheet(wb, wsInstr, 'Instrument');
 
@@ -693,12 +913,14 @@
             const wsServ = XLSX.utils.aoa_to_sheet([['Instrument', 'Datum', 'Certifikat', 'Anteckningar'], ...servData]);
             XLSX.utils.book_append_sheet(wb, wsServ, 'Service');
 
-            const calData = filteredCalibrations.map(c => {
-                const inst = instruments.find(i => i.id === c.instrumentId);
-                return [inst ? inst.product || inst.name : 'Okänd', c.year, c.month, c.passed ? 'Ja' : 'Nej', c.notes || ''];
-            });
-            const wsCal = XLSX.utils.aoa_to_sheet([['Instrument', 'År', 'Månad', 'Godkänd', 'Anteckningar'], ...calData]);
-            XLSX.utils.book_append_sheet(wb, wsCal, 'Kalibrering');
+            if (filteredCalibrations.length > 0) {
+                const calData = filteredCalibrations.map(c => {
+                    const inst = instruments.find(i => i.id === c.instrumentId);
+                    return [inst ? inst.product || inst.name : 'Okänd', c.year, c.month, c.passed ? 'Ja' : 'Nej', c.notes || ''];
+                });
+                const wsCal = XLSX.utils.aoa_to_sheet([['Instrument', 'År', 'Månad', 'Godkänd', 'Anteckningar'], ...calData]);
+                XLSX.utils.book_append_sheet(wb, wsCal, 'Kalibrering');
+            }
 
             XLSX.writeFile(wb, `Instrumentrapport_${new Date().toISOString().slice(0,10)}.xlsx`);
         }
@@ -707,12 +929,13 @@
             const wb = XLSX.utils.book_new();
             const instData = instruments.map(inst => [
                 inst.equipmentNumber || '', inst.product || '', inst.serialNumber || '', inst.reference || '',
-                inst.deliveryDate || '', inst.ccp || '', inst.ccpType || '', inst.ccpEndDate || '',
-                inst.version || '', inst.articleNumber || '', inst.notes || ''
+                inst.deliveryDate || '', inst.next_service || '', inst.type === 'totalstation' ? (inst.ccp || '') : '',
+                inst.type === 'totalstation' ? (inst.ccpType || '') : '', inst.type === 'totalstation' ? (inst.ccpEndDate || '') : '',
+                inst.type === 'gps' ? (inst.next_internet || '') : '', inst.version || '', inst.articleNumber || '', inst.notes || ''
             ]);
             const wsInstr = XLSX.utils.aoa_to_sheet([[
-                'Utrustningsnummer', 'Produkt', 'Serienummer', 'Min Referens', 'Leveransdatum', 
-                'CCP', 'CCP Typ', 'CCP Slutdatum', 'Version', 'Artikelnummer', 'Anteckningar'
+                'Utrustningsnummer', 'Produkt', 'Serienummer', 'Min Referens', 'Leveransdatum', 'Nästa service',
+                'CCP', 'CCP Typ', 'CCP Slutdatum', 'Nästa internet (GPS)', 'Version', 'Artikelnummer', 'Anteckningar'
             ], ...instData]);
             XLSX.utils.book_append_sheet(wb, wsInstr, 'Instrument');
 
@@ -806,7 +1029,6 @@
                 document.getElementById('userName').innerText = user.email;
                 document.getElementById('loginModal').style.display = 'none';
                 document.getElementById('mainApp').classList.remove('hidden');
-                await initializeDataIfEmpty();
                 loadData();
             } else {
                 currentUser = null;
@@ -824,10 +1046,13 @@
         document.getElementById('instrumentForm').addEventListener('submit', saveInstrument);
         document.getElementById('serviceForm').addEventListener('submit', saveService);
         document.getElementById('calibrationForm').addEventListener('submit', saveCalibration);
-        document.getElementById('uploadCertBtn').addEventListener('click', () => uploadToCloudinary('serviceCertUrl', 'certPreview'));
+        document.getElementById('uploadIconBtn').addEventListener('click', () => uploadToCloudinary('instIconUrl', 'iconPreview', true));
+        document.getElementById('uploadCertBtn').addEventListener('click', () => uploadToCloudinary('serviceCertUrl', 'certPreview', false));
         document.getElementById('refreshLogsBtn').addEventListener('click', loadLogs);
         document.getElementById('exportReportBtn').addEventListener('click', exportReport);
         document.getElementById('exportFullBtn').addEventListener('click', exportFull);
+        document.getElementById('instIconUrl').addEventListener('input', updateIconPreview);
+        document.getElementById('instType').addEventListener('change', toggleFieldsByType);
 
         document.addEventListener('keydown', e => {
             if (e.ctrlKey && e.shiftKey && e.key === 'L') {
