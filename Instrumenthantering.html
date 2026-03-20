@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <title>Instrumenthantering - Team Geomira AB</title>
+    <link rel="icon" href="faviconk.png" type="image/png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
+    <style>
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); z-index:1000; overflow-y:auto; }
+        .modal-content { background: white; margin: 5% auto; padding: 20px; max-width: 800px; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .btn-gradient-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .btn-gradient-success { background: linear-gradient(135deg, #10b981, #34d399); color: white; }
+        .instrument-card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; transition: all 0.2s; background: white; cursor: pointer; }
+        .instrument-card:hover { box-shadow: 0 8px 20px rgba(0,0,0,0.1); transform: translateY(-2px); }
+        .log-entry { background: #f9fafb; border-left: 4px solid #3b82f6; margin-bottom: 12px; padding: 12px; border-radius: 8px; }
+        .log-badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; }
+        .log-badge-create { background: #d1fae5; color: #065f46; }
+        .log-badge-update { background: #fef3c7; color: #92400e; }
+        .log-badge-delete { background: #fee2e2; color: #991b1b; }
+        .service-item, .calibration-item { background: #f8fafc; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .report-filters { background: white; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .field-group { margin-bottom: 12px; }
+        .field-label { font-weight: 600; font-size: 0.875rem; margin-bottom: 4px; display: block; }
+        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; background: #e2e8f0; }
+        .ccp-active { background: #fef3c7; color: #92400e; }
+        .ccp-expired { background: #fee2e2; color: #991b1b; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal" style="display: block;">
+        <div class="modal-content max-w-md">
+            <div class="text-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">Instrumenthantering</h2>
+                <p class="text-gray-600">Team Geomira AB</p>
+            </div>
+            <div id="loginForm">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Logga in</h3>
+                <input type="email" id="loginEmail" placeholder="E-post" class="w-full border p-2 rounded mb-3">
+                <input type="password" id="loginPassword" placeholder="Lösenord" class="w-full border p-2 rounded mb-4">
+                <button id="loginBtn" class="btn-gradient-primary w-full py-2 rounded">Logga in</button>
+                <p class="text-center mt-3 text-sm">Har du inget konto? <button id="showRegisterBtn" class="text-blue-600">Registrera</button></p>
+            </div>
+            <div id="registerForm" class="hidden">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Registrera</h3>
+                <input type="email" id="registerEmail" placeholder="E-post" class="w-full border p-2 rounded mb-3">
+                <input type="password" id="registerPassword" placeholder="Lösenord (minst 6 tecken)" class="w-full border p-2 rounded mb-3">
+                <input type="text" id="registerName" placeholder="Namn" class="w-full border p-2 rounded mb-4">
+                <button id="registerBtn" class="btn-gradient-success w-full py-2 rounded">Registrera</button>
+                <p class="text-center mt-3 text-sm"><button id="backToLoginBtn" class="text-blue-600">Tillbaka till inloggning</button></p>
+            </div>
+            <div id="loginMessage" class="mt-4 text-center hidden"></div>
+        </div>
+    </div>
+
+    <!-- Huvudapplikation -->
+    <div id="mainApp" class="hidden container mx-auto px-4 py-6">
+        <header class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-2xl p-6 mb-8 flex flex-wrap justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold">Instrumenthantering</h1>
+                <p>Service & kalibrering</p>
+            </div>
+            <div class="flex gap-3 items-center">
+                <span id="userName" class="bg-white/20 px-3 py-1 rounded-full"></span>
+                <button onclick="logout()" class="bg-red-500 px-3 py-1 rounded hover:bg-red-600">Logga ut</button>
+            </div>
+        </header>
+
+        <!-- Rapportsektion -->
+        <div class="report-filters mb-6">
+            <h2 class="text-lg font-bold mb-3">Rapporter</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium">Service - från datum</label>
+                    <input type="date" id="reportServiceFrom" class="w-full border rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Service - till datum</label>
+                    <input type="date" id="reportServiceTo" class="w-full border rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Kalibrering - år</label>
+                    <select id="reportCalYear" class="w-full border rounded p-2">
+                        <option value="all">Alla år</option>
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026" selected>2026</option>
+                        <option value="2027">2027</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-4 flex gap-2">
+                <button id="exportReportBtn" class="btn-gradient-success px-4 py-2 rounded text-sm">📊 Exportera rapport (Excel)</button>
+                <button id="exportFullBtn" class="bg-gray-700 text-white px-4 py-2 rounded text-sm">📁 Exportera all data (Excel)</button>
+            </div>
+        </div>
+
+        <!-- Lägg till instrument -->
+        <div class="flex justify-end mb-4">
+            <button id="newInstrumentBtn" class="bg-green-600 text-white px-4 py-2 rounded-lg shadow hover:bg-green-700">+ Nytt instrument</button>
+        </div>
+
+        <!-- Lista av instrument -->
+        <div id="instrumentsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+    </div>
+
+    <!-- Modal för instrument (skapa/redigera) -->
+    <div id="instrumentModal" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 id="instrumentModalTitle" class="text-xl font-bold">Nytt instrument</h2>
+                <button onclick="closeModal('instrumentModal')" class="text-gray-500 text-2xl">&times;</button>
+            </div>
+            <form id="instrumentForm">
+                <input type="hidden" id="instrumentId">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="field-group">
+                        <label class="field-label">Utrustningsnummer</label>
+                        <input type="text" id="instEqNum" class="w-full border rounded p-2">
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label">Produkt *</label>
+                        <input type="text" id="instProduct" required class="w-full border rounded p-2">
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label">Serienummer</label>
+                        <input type="text" id="instSerial" class="w-full border rounded p-2">
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label">Min Referens</label>
+                        <input type="text" id="instRef" class="w-full border rounded p-2">
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label">Leveransdatum</label>
+                        <input type="date" id="instDeliveryDate" class="w-full border rounded p-2">
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label">CCP</label>
+                        <input type="text" id="instCCP" class="w-full border rounded p-2">
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label">CCP Typ</label>
+                        <input type="text" id="instCCPType" class="w-full border rounded p-2">
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label">CCP Slutdatum</label>
+                        <input type="date" id="instCCPEnd" class="w-full border rounded p-2">
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label">Version</label>
+                        <input type="text" id="instVersion" class="w-full border rounded p-2">
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label">Artikelnummer</label>
+                        <input type="text" id="instArtNo" class="w-full border rounded p-2">
+                    </div>
+                    <div class="field-group md:col-span-2">
+                        <label class="field-label">Anteckningar</label>
+                        <textarea id="instNotes" rows="2" class="w-full border rounded p-2"></textarea>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 mt-4">
+                    <button type="button" onclick="closeModal('instrumentModal')" class="bg-gray-300 px-4 py-2 rounded">Avbryt</button>
+                    <button type="submit" class="btn-gradient-primary px-4 py-2 rounded">Spara</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal för service -->
+    <div id="serviceModal" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Lägg till service</h2>
+                <button onclick="closeModal('serviceModal')" class="text-gray-500 text-2xl">&times;</button>
+            </div>
+            <form id="serviceForm">
+                <input type="hidden" id="serviceInstrumentId">
+                <input type="hidden" id="serviceId">
+                <div class="mb-3">
+                    <label class="block text-sm font-medium">Datum *</label>
+                    <input type="date" id="serviceDate" required class="w-full border rounded p-2">
+                </div>
+                <div class="mb-3">
+                    <label class="block text-sm font-medium">Certifikat (PDF/bild)</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="serviceCertUrl" placeholder="Välj fil för att ladda upp" class="flex-1 border rounded p-2 bg-gray-50" readonly>
+                        <button type="button" id="uploadCertBtn" class="bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600">Ladda upp</button>
+                    </div>
+                    <div id="certPreview" class="mt-1 text-xs text-gray-500"></div>
+                </div>
+                <div class="mb-3">
+                    <label class="block text-sm font-medium">Anteckningar</label>
+                    <textarea id="serviceNotes" rows="2" class="w-full border rounded p-2"></textarea>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('serviceModal')" class="bg-gray-300 px-4 py-2 rounded">Avbryt</button>
+                    <button type="submit" class="btn-gradient-primary px-4 py-2 rounded">Spara service</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal för kalibrering -->
+    <div id="calibrationModal" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Lägg till kalibrering</h2>
+                <button onclick="closeModal('calibrationModal')" class="text-gray-500 text-2xl">&times;</button>
+            </div>
+            <form id="calibrationForm">
+                <input type="hidden" id="calInstrumentId">
+                <input type="hidden" id="calId">
+                <div class="mb-3">
+                    <label class="block text-sm font-medium">År</label>
+                    <input type="number" id="calYear" required class="w-full border rounded p-2" value="2026">
+                </div>
+                <div class="mb-3">
+                    <label class="block text-sm font-medium">Månad</label>
+                    <select id="calMonth" required class="w-full border rounded p-2">
+                        <option value="1">Januari</option><option value="2">Februari</option><option value="3">Mars</option>
+                        <option value="4">April</option><option value="5">Maj</option><option value="6">Juni</option>
+                        <option value="7">Juli</option><option value="8">Augusti</option><option value="9">September</option>
+                        <option value="10">Oktober</option><option value="11">November</option><option value="12">December</option>
+                    </select>
+                </div>
+                <div class="mb-3 flex items-center">
+                    <input type="checkbox" id="calPassed" class="mr-2"> <label>Godkänd</label>
+                </div>
+                <div class="mb-3">
+                    <label class="block text-sm font-medium">Anteckningar</label>
+                    <textarea id="calNotes" rows="2" class="w-full border rounded p-2"></textarea>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('calibrationModal')" class="bg-gray-300 px-4 py-2 rounded">Avbryt</button>
+                    <button type="submit" class="btn-gradient-primary px-4 py-2 rounded">Spara kalibrering</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal för bitácora (Ctrl+Shift+L) -->
+    <div id="logModal" class="modal">
+        <div class="modal-content max-w-4xl">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Bitácora de actividades</h2>
+                <button onclick="closeModal('logModal')" class="text-gray-500 text-2xl">&times;</button>
+            </div>
+            <div class="mb-2 flex justify-end">
+                <button id="refreshLogsBtn" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">Uppdatera</button>
+            </div>
+            <div id="logsContainer" class="max-h-[70vh] overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <script>
+        // Firebase Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDCkm9d4vIa9H52dCIMgyiGDcXWh9y3Ruk",
+            authDomain: "skolaraport.firebaseapp.com",
+            databaseURL: "https://skolaraport-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "skolaraport",
+            storageBucket: "skolaraport.appspot.com",
+            messagingSenderId: "720242828475",
+            appId: "1:720242828475:web:7c5f7d3e1c34d1c9d7a8d4"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const auth = firebase.auth();
+
+        // Cloudinary config
+        const cloudName = 'dc1zqri3o';
+        const uploadPreset = 'instrument_certificates';
+
+        let currentUser = null;
+        let instruments = [];
+        let services = [];
+        let calibrations = [];
+
+        // ALLA INSTRUMENT DIREKT I KODEN (från din tabell)
+        const defaultInstruments = [
+            { equipmentNumber: "3709311", product: "CS15 Kontrollenhet WinCE TPS Radio", serialNumber: "1591023", reference: "MARIA", deliveryDate: "2010-03-08", ccp: "", ccpType: "", ccpEndDate: "", version: "v5.70.1671", articleNumber: "767871" },
+            { equipmentNumber: "3744057", product: "TS30 0.5\", Totalstation med EDM/ATR/PS", serialNumber: "360941", reference: "FABIAN", deliveryDate: "2017-09-18", ccp: "", ccpType: "", ccpEndDate: "", version: "v", articleNumber: "99757130" },
+            { equipmentNumber: "3862302", product: "CS15 Kontrollenhet WinCE TPS Radio", serialNumber: "1591907", reference: "VINICIO", deliveryDate: "2017-03-09", ccp: "", ccpType: "", ccpEndDate: "", version: "v6.04.0046", articleNumber: "99767871" },
+            { equipmentNumber: "4824066", product: "TS15 P 3\" R400, totalstation m. SnabbSö", serialNumber: "1616533", reference: "DAVID", deliveryDate: "2018-10-31", ccp: "40679978", ccpType: "CCP bas", ccpEndDate: "2026-10-30", version: "v9.06.0029", articleNumber: "99780863" },
+            { equipmentNumber: "5343913", product: "TS15 P 1\" R400, totalstation m. SnabbSö", serialNumber: "1620913", reference: "VINICIO", deliveryDate: "2017-06-19", ccp: "40675446", ccpType: "CCP bas", ccpEndDate: "2026-09-17", version: "v9.06.0029", articleNumber: "99780865" },
+            { equipmentNumber: "5470915", product: "TS15 P 1\" R400, totalstation m. SnabbSö", serialNumber: "1621914", reference: "ERIKA", deliveryDate: "2017-03-09", ccp: "", ccpType: "CCP bas", ccpEndDate: "2025-10-13", version: "v9.6.29", articleNumber: "99780865" },
+            { equipmentNumber: "5586111", product: "CS15 Field Controller", serialNumber: "2895638", reference: "ALEXANDER", deliveryDate: "2017-06-19", ccp: "", ccpType: "", ccpEndDate: "", version: "v6.04.0046", articleNumber: "99810855" },
+            { equipmentNumber: "6528771", product: "CS20 3.75G Basic Field Controller", serialNumber: "2423259", reference: "ERIKA", deliveryDate: "2016-09-27", ccp: "", ccpType: "CCP bas", ccpEndDate: "2024-09-13", version: "v7.3.58", articleNumber: "823165" },
+            { equipmentNumber: "6534029", product: "CS20 3.75G Field Controller", serialNumber: "2428517", reference: "DAVID", deliveryDate: "2018-10-31", ccp: "", ccpType: "CCP bas", ccpEndDate: "2024-11-05", version: "v7.3.58", articleNumber: "99823165" },
+            { equipmentNumber: "6786383", product: "TS16 P 1\" R500, total station with PS", serialNumber: "3200914", reference: "FERNANDO", deliveryDate: "2019-02-06", ccp: "40697150", ccpType: "CCP bas", ccpEndDate: "2027-02-17", version: "v9.10.78", articleNumber: "99822449" },
+            { equipmentNumber: "6853669", product: "RH17, Bluetooth RadioHandle", serialNumber: "3102050", reference: "DAVID", deliveryDate: "2019-02-06", ccp: "", ccpType: "", ccpEndDate: "", version: "v", articleNumber: "99818467" },
+            { equipmentNumber: "7135816", product: "TS16 P 1\" R500, total station with PS", serialNumber: "3203454", reference: "ALEXANDER", deliveryDate: "2016-09-27", ccp: "40678957", ccpType: "CCP bas", ccpEndDate: "2026-10-20", version: "v9.0.262", articleNumber: "822449" },
+            { equipmentNumber: "7287074", product: "RH17, Bluetooth RadioHandle", serialNumber: "3104824", reference: "ANDREAS", deliveryDate: "2016-09-27", ccp: "", ccpType: "", ccpEndDate: "", version: "v", articleNumber: "818467" },
+            { equipmentNumber: "7570165", product: "RH17, Bluetooth RadioHandle", serialNumber: "3106573", reference: "ERIKA", deliveryDate: "2017-09-19", ccp: "", ccpType: "", ccpEndDate: "", version: "v", articleNumber: "818467" },
+            { equipmentNumber: "10232352", product: "CloudWorx-EE for SP3D float", serialNumber: "1", reference: "", deliveryDate: "2012-08-10", ccp: "", ccpType: "", ccpEndDate: "", version: "v", articleNumber: "772253" },
+            { equipmentNumber: "31024482", product: "GS18 T LTE Performance", serialNumber: "4903556", reference: "ANDREAS", deliveryDate: "2024-03-25", ccp: "40708047", ccpType: "CCP bas", ccpEndDate: "2027-04-14", version: "v8.10", articleNumber: "855300" }
+        ];
+
+        // Logging
+        function logAction(action, entityType, entityId, oldData, newData) {
+            if (!currentUser) return;
+            const log = {
+                timestamp: new Date().toISOString(),
+                userEmail: currentUser.email,
+                userUid: currentUser.uid,
+                action,
+                entityType,
+                entityId,
+                oldData: oldData ? JSON.stringify(oldData) : null,
+                newData: newData ? JSON.stringify(newData) : null,
+                userAgent: navigator.userAgent
+            };
+            database.ref('instrument_logs').push(log).catch(console.error);
+        }
+
+        // Initiera data om tomt
+        async function initializeDataIfEmpty() {
+            const snapshot = await database.ref('instruments').once('value');
+            if (!snapshot.exists()) {
+                console.log('Inga instrument hittades. Laddar från inbyggd data...');
+                const updates = {};
+                for (const inst of defaultInstruments) {
+                    const newRef = database.ref('instruments').push();
+                    const data = {
+                        ...inst,
+                        name: inst.product,
+                        notes: '',
+                        createdAt: new Date().toISOString(),
+                        createdBy: 'system'
+                    };
+                    updates[`instruments/${newRef.key}`] = data;
+                }
+                await database.ref().update(updates);
+                console.log(`${defaultInstruments.length} instrument laddade!`);
+            }
+        }
+
+        // Ladda data
+        function loadData() {
+            database.ref('instruments').on('value', snap => {
+                instruments = [];
+                snap.forEach(child => instruments.push({ id: child.key, ...child.val() }));
+                renderInstruments();
+            });
+            database.ref('services').on('value', snap => {
+                services = [];
+                snap.forEach(child => services.push({ id: child.key, ...child.val() }));
+                renderInstruments();
+            });
+            database.ref('calibrations').on('value', snap => {
+                calibrations = [];
+                snap.forEach(child => calibrations.push({ id: child.key, ...child.val() }));
+                renderInstruments();
+            });
+        }
+
+        // Kontrollera om CCP är utgången
+        function isCcpExpired(ccpEndDate) {
+            if (!ccpEndDate) return false;
+            const today = new Date();
+            const endDate = new Date(ccpEndDate);
+            return endDate < today;
+        }
+
+        // Visa instrument i grid
+        function renderInstruments() {
+            const container = document.getElementById('instrumentsContainer');
+            container.innerHTML = '';
+            if (instruments.length === 0) {
+                container.innerHTML = '<p class="text-center col-span-full text-gray-500">Inga instrument än. Klicka på "Nytt instrument".</p>';
+                return;
+            }
+            instruments.forEach(inst => {
+                const instServices = services.filter(s => s.instrumentId === inst.id);
+                const instCalibrations = calibrations.filter(c => c.instrumentId === inst.id);
+                const ccpExpired = isCcpExpired(inst.ccpEndDate);
+                
+                const card = document.createElement('div');
+                card.className = 'instrument-card';
+                card.onclick = () => showInstrumentDetails(inst.id);
+                card.innerHTML = `
+                    <div class="flex items-start gap-3">
+                        <div class="h-12 w-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center text-2xl">🔧</div>
+                        <div class="flex-1">
+                            <h3 class="font-bold text-lg">${escapeHtml(inst.product || inst.name)}</h3>
+                            <p class="text-sm text-gray-600">Serie: ${inst.serialNumber || '-'} | Ref: ${inst.reference || '-'}</p>
+                            <p class="text-xs text-gray-500">Utrustningsnr: ${inst.equipmentNumber || '-'}</p>
+                            ${inst.ccpEndDate ? `<p class="text-xs ${ccpExpired ? 'text-red-600 font-semibold' : 'text-blue-600'}">CCP: ${inst.ccpEndDate} ${ccpExpired ? '(Utgången!)' : ''}</p>` : ''}
+                        </div>
+                    </div>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Service: ${instServices.length}</span>
+                        <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Kalibrering: ${instCalibrations.length}</span>
+                        <button onclick="event.stopPropagation(); editInstrument('${inst.id}')" class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">Redigera</button>
+                        <button onclick="event.stopPropagation(); deleteInstrument('${inst.id}')" class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Ta bort</button>
+                    </div>
+                    <div class="mt-2 border-t pt-2 text-sm flex gap-3">
+                        <button onclick="event.stopPropagation(); addService('${inst.id}')" class="text-blue-600">+ Lägg till service</button>
+                        <button onclick="event.stopPropagation(); addCalibration('${inst.id}')" class="text-green-600">+ Lägg till kalibrering</button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function showInstrumentDetails(instId) {
+            const inst = instruments.find(i => i.id === instId);
+            const instServices = services.filter(s => s.instrumentId === instId).sort((a,b) => new Date(b.date) - new Date(a.date));
+            const instCalibrations = calibrations.filter(c => c.instrumentId === instId).sort((a,b) => (b.year - a.year) || (b.month - a.month));
+            
+            const servicesHtml = instServices.map(s => `
+                <div class="service-item">
+                    <div>
+                        <div class="font-medium">${formatDate(s.date)}</div>
+                        ${s.certificateUrl ? `<a href="${s.certificateUrl}" target="_blank" class="text-blue-500 text-sm">📄 Visa certifikat</a>` : ''}
+                        <div class="text-sm text-gray-600">${s.notes || ''}</div>
+                    </div>
+                    <button onclick="deleteService('${s.id}')" class="text-red-500 text-sm">🗑️</button>
+                </div>
+            `).join('');
+            
+            const calibrationsHtml = instCalibrations.map(c => `
+                <div class="calibration-item">
+                    <div>
+                        <div class="font-medium">${c.year}-${String(c.month).padStart(2,'0')} ${c.passed ? '✅ Godkänd' : '❌ Ej godkänd'}</div>
+                        <div class="text-sm text-gray-600">${c.notes || ''}</div>
+                    </div>
+                    <button onclick="deleteCalibration('${c.id}')" class="text-red-500 text-sm">🗑️</button>
+                </div>
+            `).join('');
+            
+            showModalMessage(
+                `${inst.product || inst.name}`, 
+                `<div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div><strong>Utrustningsnummer:</strong> ${inst.equipmentNumber || '-'}</div>
+                        <div><strong>Serienummer:</strong> ${inst.serialNumber || '-'}</div>
+                        <div><strong>Min Referens:</strong> ${inst.reference || '-'}</div>
+                        <div><strong>Leveransdatum:</strong> ${inst.deliveryDate || '-'}</div>
+                        <div><strong>Version:</strong> ${inst.version || '-'}</div>
+                        <div><strong>Artikelnummer:</strong> ${inst.articleNumber || '-'}</div>
+                    </div>
+                    <div><strong>CCP:</strong> ${inst.ccp || '-'} ${inst.ccpType ? `(${inst.ccpType})` : ''}</div>
+                    <div><strong>CCP Slutdatum:</strong> ${inst.ccpEndDate || '-'}</div>
+                    <div><strong>Anteckningar:</strong> ${inst.notes || '-'}</div>
+                    <hr>
+                    <div><strong class="text-blue-600">Servicehistorik (${instServices.length})</strong></div>
+                    <div>${servicesHtml || '<p class="text-gray-500">Inga serviceregistreringar.</p>'}</div>
+                    <hr>
+                    <div><strong class="text-green-600">Kalibreringshistorik (${instCalibrations.length})</strong></div>
+                    <div>${calibrationsHtml || '<p class="text-gray-500">Inga kalibreringsposter.</p>'}</div>
+                </div>`, 
+                true
+            );
+        }
+
+        function showModalMessage(title, body, isHtml = false) {
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.style.display = 'block';
+            modal.innerHTML = `
+                <div class="modal-content max-w-2xl">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold">${escapeHtml(title)}</h2>
+                        <button onclick="this.closest('.modal').remove()" class="text-gray-500 text-2xl">&times;</button>
+                    </div>
+                    <div class="max-h-[60vh] overflow-y-auto">${isHtml ? body : escapeHtml(body)}</div>
+                    <div class="mt-4 text-right">
+                        <button onclick="this.closest('.modal').remove()" class="bg-gray-300 px-4 py-1 rounded">Stäng</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        // CRUD Instrument
+        function newInstrument() {
+            document.getElementById('instrumentModalTitle').innerText = 'Nytt instrument';
+            document.getElementById('instrumentForm').reset();
+            document.getElementById('instrumentId').value = '';
+            openModal('instrumentModal');
+        }
+        function editInstrument(id) {
+            const inst = instruments.find(i => i.id === id);
+            if (!inst) return;
+            document.getElementById('instrumentModalTitle').innerText = 'Redigera instrument';
+            document.getElementById('instrumentId').value = inst.id;
+            document.getElementById('instEqNum').value = inst.equipmentNumber || '';
+            document.getElementById('instProduct').value = inst.product || '';
+            document.getElementById('instSerial').value = inst.serialNumber || '';
+            document.getElementById('instRef').value = inst.reference || '';
+            document.getElementById('instDeliveryDate').value = inst.deliveryDate || '';
+            document.getElementById('instCCP').value = inst.ccp || '';
+            document.getElementById('instCCPType').value = inst.ccpType || '';
+            document.getElementById('instCCPEnd').value = inst.ccpEndDate || '';
+            document.getElementById('instVersion').value = inst.version || '';
+            document.getElementById('instArtNo').value = inst.articleNumber || '';
+            document.getElementById('instNotes').value = inst.notes || '';
+            openModal('instrumentModal');
+        }
+        async function saveInstrument(e) {
+            e.preventDefault();
+            const id = document.getElementById('instrumentId').value;
+            const data = {
+                equipmentNumber: document.getElementById('instEqNum').value.trim(),
+                product: document.getElementById('instProduct').value.trim(),
+                serialNumber: document.getElementById('instSerial').value.trim(),
+                reference: document.getElementById('instRef').value.trim(),
+                deliveryDate: document.getElementById('instDeliveryDate').value,
+                ccp: document.getElementById('instCCP').value.trim(),
+                ccpType: document.getElementById('instCCPType').value.trim(),
+                ccpEndDate: document.getElementById('instCCPEnd').value,
+                version: document.getElementById('instVersion').value.trim(),
+                articleNumber: document.getElementById('instArtNo').value.trim(),
+                notes: document.getElementById('instNotes').value.trim(),
+                name: document.getElementById('instProduct').value.trim(),
+                updatedAt: new Date().toISOString(),
+                updatedBy: currentUser.email
+            };
+            if (!data.product) { alert('Produkt måste anges'); return; }
+            if (id) {
+                const old = instruments.find(i => i.id === id);
+                await database.ref(`instruments/${id}`).update(data);
+                logAction('update', 'instrument', id, old, data);
+            } else {
+                const newRef = database.ref('instruments').push();
+                data.createdAt = new Date().toISOString();
+                data.createdBy = currentUser.email;
+                await newRef.set(data);
+                logAction('create', 'instrument', newRef.key, null, data);
+            }
+            closeModal('instrumentModal');
+        }
+        function deleteInstrument(id) {
+            if (confirm('Är du säker på att ta bort instrumentet? Alla tillhörande service- och kalibreringsposter kommer också att raderas.')) {
+                const inst = instruments.find(i => i.id === id);
+                database.ref(`instruments/${id}`).remove();
+                const relatedServices = services.filter(s => s.instrumentId === id);
+                relatedServices.forEach(s => database.ref(`services/${s.id}`).remove());
+                const relatedCals = calibrations.filter(c => c.instrumentId === id);
+                relatedCals.forEach(c => database.ref(`calibrations/${c.id}`).remove());
+                logAction('delete', 'instrument', id, inst, null);
+            }
+        }
+
+        // Service CRUD
+        function addService(instrumentId) {
+            document.getElementById('serviceForm').reset();
+            document.getElementById('serviceInstrumentId').value = instrumentId;
+            document.getElementById('serviceId').value = '';
+            document.getElementById('serviceCertUrl').value = '';
+            document.getElementById('certPreview').innerHTML = '';
+            openModal('serviceModal');
+        }
+        async function saveService(e) {
+            e.preventDefault();
+            const id = document.getElementById('serviceId').value;
+            const instrumentId = document.getElementById('serviceInstrumentId').value;
+            const data = {
+                instrumentId,
+                date: document.getElementById('serviceDate').value,
+                certificateUrl: document.getElementById('serviceCertUrl').value,
+                notes: document.getElementById('serviceNotes').value,
+                updatedAt: new Date().toISOString(),
+                updatedBy: currentUser.email
+            };
+            if (!data.date) { alert('Datum måste anges'); return; }
+            if (id) {
+                const old = services.find(s => s.id === id);
+                await database.ref(`services/${id}`).update(data);
+                logAction('update', 'service', id, old, data);
+            } else {
+                const newRef = database.ref('services').push();
+                data.createdAt = new Date().toISOString();
+                data.createdBy = currentUser.email;
+                await newRef.set(data);
+                logAction('create', 'service', newRef.key, null, data);
+            }
+            closeModal('serviceModal');
+        }
+        function deleteService(id) {
+            if (confirm('Ta bort denna service?')) {
+                const s = services.find(s => s.id === id);
+                database.ref(`services/${id}`).remove();
+                logAction('delete', 'service', id, s, null);
+            }
+        }
+
+        // Kalibrering CRUD
+        function addCalibration(instrumentId) {
+            document.getElementById('calibrationForm').reset();
+            document.getElementById('calInstrumentId').value = instrumentId;
+            document.getElementById('calId').value = '';
+            document.getElementById('calYear').value = new Date().getFullYear();
+            openModal('calibrationModal');
+        }
+        async function saveCalibration(e) {
+            e.preventDefault();
+            const id = document.getElementById('calId').value;
+            const instrumentId = document.getElementById('calInstrumentId').value;
+            const data = {
+                instrumentId,
+                year: parseInt(document.getElementById('calYear').value),
+                month: parseInt(document.getElementById('calMonth').value),
+                passed: document.getElementById('calPassed').checked,
+                notes: document.getElementById('calNotes').value,
+                updatedAt: new Date().toISOString(),
+                updatedBy: currentUser.email
+            };
+            if (!data.year || !data.month) { alert('År och månad måste anges'); return; }
+            if (id) {
+                const old = calibrations.find(c => c.id === id);
+                await database.ref(`calibrations/${id}`).update(data);
+                logAction('update', 'calibration', id, old, data);
+            } else {
+                const newRef = database.ref('calibrations').push();
+                data.createdAt = new Date().toISOString();
+                data.createdBy = currentUser.email;
+                await newRef.set(data);
+                logAction('create', 'calibration', newRef.key, null, data);
+            }
+            closeModal('calibrationModal');
+        }
+        function deleteCalibration(id) {
+            if (confirm('Ta bort denna kalibreringspost?')) {
+                const c = calibrations.find(c => c.id === id);
+                database.ref(`calibrations/${id}`).remove();
+                logAction('delete', 'calibration', id, c, null);
+            }
+        }
+
+        // Cloudinary uppladdning
+        function uploadToCloudinary(fieldId, previewId) {
+            const widget = cloudinary.createUploadWidget({
+                cloudName: cloudName,
+                uploadPreset: uploadPreset,
+                sources: ['local', 'url', 'camera'],
+                multiple: false
+            }, (error, result) => {
+                if (error) {
+                    console.error('Cloudinary error:', error);
+                    alert('Fel vid uppladdning: ' + (error.message || 'Okänt fel'));
+                    return;
+                }
+                if (result && result.event === 'success') {
+                    const url = result.info.secure_url;
+                    document.getElementById(fieldId).value = url;
+                    if (previewId) {
+                        document.getElementById(previewId).innerHTML = `<a href="${url}" target="_blank" class="text-blue-500">📄 Öppna certifikat</a>`;
+                    }
+                }
+            });
+            widget.open();
+        }
+
+        // Rapportexport (utan bild-URL)
+        function exportReport() {
+            const serviceFrom = document.getElementById('reportServiceFrom').value;
+            const serviceTo = document.getElementById('reportServiceTo').value;
+            const calYear = document.getElementById('reportCalYear').value;
+
+            let filteredServices = services;
+            if (serviceFrom) filteredServices = filteredServices.filter(s => s.date >= serviceFrom);
+            if (serviceTo) filteredServices = filteredServices.filter(s => s.date <= serviceTo);
+            let filteredCalibrations = calibrations;
+            if (calYear !== 'all') filteredCalibrations = filteredCalibrations.filter(c => c.year == calYear);
+
+            const wb = XLSX.utils.book_new();
+
+            const instData = instruments.map(inst => [
+                inst.equipmentNumber || '', inst.product || '', inst.serialNumber || '', inst.reference || '',
+                inst.deliveryDate || '', inst.ccp || '', inst.ccpType || '', inst.ccpEndDate || '',
+                inst.version || '', inst.articleNumber || '', inst.notes || ''
+            ]);
+            const wsInstr = XLSX.utils.aoa_to_sheet([[
+                'Utrustningsnummer', 'Produkt', 'Serienummer', 'Min Referens', 'Leveransdatum', 
+                'CCP', 'CCP Typ', 'CCP Slutdatum', 'Version', 'Artikelnummer', 'Anteckningar'
+            ], ...instData]);
+            XLSX.utils.book_append_sheet(wb, wsInstr, 'Instrument');
+
+            const servData = filteredServices.map(s => {
+                const inst = instruments.find(i => i.id === s.instrumentId);
+                return [inst ? inst.product || inst.name : 'Okänd', s.date, s.certificateUrl || '', s.notes || ''];
+            });
+            const wsServ = XLSX.utils.aoa_to_sheet([['Instrument', 'Datum', 'Certifikat', 'Anteckningar'], ...servData]);
+            XLSX.utils.book_append_sheet(wb, wsServ, 'Service');
+
+            const calData = filteredCalibrations.map(c => {
+                const inst = instruments.find(i => i.id === c.instrumentId);
+                return [inst ? inst.product || inst.name : 'Okänd', c.year, c.month, c.passed ? 'Ja' : 'Nej', c.notes || ''];
+            });
+            const wsCal = XLSX.utils.aoa_to_sheet([['Instrument', 'År', 'Månad', 'Godkänd', 'Anteckningar'], ...calData]);
+            XLSX.utils.book_append_sheet(wb, wsCal, 'Kalibrering');
+
+            XLSX.writeFile(wb, `Instrumentrapport_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        function exportFull() {
+            const wb = XLSX.utils.book_new();
+            const instData = instruments.map(inst => [
+                inst.equipmentNumber || '', inst.product || '', inst.serialNumber || '', inst.reference || '',
+                inst.deliveryDate || '', inst.ccp || '', inst.ccpType || '', inst.ccpEndDate || '',
+                inst.version || '', inst.articleNumber || '', inst.notes || ''
+            ]);
+            const wsInstr = XLSX.utils.aoa_to_sheet([[
+                'Utrustningsnummer', 'Produkt', 'Serienummer', 'Min Referens', 'Leveransdatum', 
+                'CCP', 'CCP Typ', 'CCP Slutdatum', 'Version', 'Artikelnummer', 'Anteckningar'
+            ], ...instData]);
+            XLSX.utils.book_append_sheet(wb, wsInstr, 'Instrument');
+
+            const servData = services.map(s => {
+                const inst = instruments.find(i => i.id === s.instrumentId);
+                return [inst ? inst.product || inst.name : 'Okänd', s.date, s.certificateUrl || '', s.notes || ''];
+            });
+            const wsServ = XLSX.utils.aoa_to_sheet([['Instrument', 'Datum', 'Certifikat', 'Anteckningar'], ...servData]);
+            XLSX.utils.book_append_sheet(wb, wsServ, 'Service');
+
+            const calData = calibrations.map(c => {
+                const inst = instruments.find(i => i.id === c.instrumentId);
+                return [inst ? inst.product || inst.name : 'Okänd', c.year, c.month, c.passed ? 'Ja' : 'Nej', c.notes || ''];
+            });
+            const wsCal = XLSX.utils.aoa_to_sheet([['Instrument', 'År', 'Månad', 'Godkänd', 'Anteckningar'], ...calData]);
+            XLSX.utils.book_append_sheet(wb, wsCal, 'Kalibrering');
+
+            XLSX.writeFile(wb, `All_instrumentdata_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        // Logs
+        function loadLogs() {
+            const container = document.getElementById('logsContainer');
+            container.innerHTML = '<div class="text-center py-4">Laddar...</div>';
+            database.ref('instrument_logs').orderByChild('timestamp').limitToLast(100).once('value', snap => {
+                const logs = [];
+                snap.forEach(child => logs.push({ id: child.key, ...child.val() }));
+                logs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                if (logs.length === 0) {
+                    container.innerHTML = '<p class="text-center text-gray-500">Inga loggar än.</p>';
+                    return;
+                }
+                let html = '';
+                logs.forEach(log => {
+                    const date = new Date(log.timestamp).toLocaleString('sv-SE');
+                    html += `
+                        <div class="log-entry">
+                            <div class="flex justify-between">
+                                <div>
+                                    <span class="log-badge log-badge-${log.action}">${log.action}</span>
+                                    <span class="ml-2 text-sm">${log.entityType} (${log.entityId || '?'})</span>
+                                </div>
+                                <span class="text-xs text-gray-500">${date}</span>
+                            </div>
+                            <div class="font-medium mt-1">${log.userEmail}</div>
+                            <div class="text-sm mt-1">
+                                ${log.oldData ? `<div><strong>Gammalt:</strong> ${log.oldData}</div>` : ''}
+                                ${log.newData ? `<div><strong>Nytt:</strong> ${log.newData}</div>` : ''}
+                            </div>
+                            <div class="text-xs text-gray-400 mt-1 truncate">${log.userAgent}</div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            });
+        }
+
+        function escapeHtml(str) { return str ? str.replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}) : ''; }
+        function formatDate(iso) { return iso ? new Date(iso).toLocaleDateString('sv-SE') : ''; }
+        function openModal(id) { document.getElementById(id).style.display = 'block'; document.body.style.overflow = 'hidden'; }
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; document.body.style.overflow = 'auto'; }
+
+        // Auth
+        function login() {
+            const email = document.getElementById('loginEmail').value;
+            const pwd = document.getElementById('loginPassword').value;
+            auth.signInWithEmailAndPassword(email, pwd).catch(err => showLoginMessage(err.message, true));
+        }
+        function register() {
+            const email = document.getElementById('registerEmail').value;
+            const pwd = document.getElementById('registerPassword').value;
+            const name = document.getElementById('registerName').value;
+            if (!email || !pwd || !name) { showLoginMessage('Fyll i alla fält', true); return; }
+            if (pwd.length < 6) { showLoginMessage('Lösenord minst 6 tecken', true); return; }
+            auth.createUserWithEmailAndPassword(email, pwd)
+                .then(cred => database.ref('users/' + cred.user.uid).set({ email, name, createdAt: new Date().toISOString() }))
+                .catch(err => showLoginMessage(err.message, true));
+        }
+        function showLoginMessage(msg, isError) {
+            const div = document.getElementById('loginMessage');
+            div.textContent = msg;
+            div.className = isError ? 'bg-red-100 text-red-700 p-2 rounded' : 'bg-green-100 text-green-700 p-2 rounded';
+            div.classList.remove('hidden');
+            setTimeout(() => div.classList.add('hidden'), 3000);
+        }
+        function logout() { if (currentUser) logAction('logout', 'user', currentUser.uid, null, { email: currentUser.email }); auth.signOut(); }
+
+        auth.onAuthStateChanged(async user => {
+            if (user) {
+                currentUser = user;
+                document.getElementById('userName').innerText = user.email;
+                document.getElementById('loginModal').style.display = 'none';
+                document.getElementById('mainApp').classList.remove('hidden');
+                await initializeDataIfEmpty();
+                loadData();
+            } else {
+                currentUser = null;
+                document.getElementById('loginModal').style.display = 'block';
+                document.getElementById('mainApp').classList.add('hidden');
+            }
+        });
+
+        // Event listeners
+        document.getElementById('loginBtn').addEventListener('click', login);
+        document.getElementById('registerBtn').addEventListener('click', register);
+        document.getElementById('showRegisterBtn').addEventListener('click', () => { document.getElementById('loginForm').classList.add('hidden'); document.getElementById('registerForm').classList.remove('hidden'); });
+        document.getElementById('backToLoginBtn').addEventListener('click', () => { document.getElementById('loginForm').classList.remove('hidden'); document.getElementById('registerForm').classList.add('hidden'); });
+        document.getElementById('newInstrumentBtn').addEventListener('click', newInstrument);
+        document.getElementById('instrumentForm').addEventListener('submit', saveInstrument);
+        document.getElementById('serviceForm').addEventListener('submit', saveService);
+        document.getElementById('calibrationForm').addEventListener('submit', saveCalibration);
+        document.getElementById('uploadCertBtn').addEventListener('click', () => uploadToCloudinary('serviceCertUrl', 'certPreview'));
+        document.getElementById('refreshLogsBtn').addEventListener('click', loadLogs);
+        document.getElementById('exportReportBtn').addEventListener('click', exportReport);
+        document.getElementById('exportFullBtn').addEventListener('click', exportFull);
+
+        document.addEventListener('keydown', e => {
+            if (e.ctrlKey && e.shiftKey && e.key === 'L') {
+                e.preventDefault();
+                if (currentUser) { loadLogs(); openModal('logModal'); }
+            }
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal').forEach(m => { if (m.style.display === 'block') closeModal(m.id); });
+            }
+        });
+
+        window.onclick = function(e) {
+            if (e.target.classList.contains('modal')) closeModal(e.target.id);
+        };
+    </script>
+</body>
+</html>
