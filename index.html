@@ -454,7 +454,7 @@
                     const instrument = { id: child.key, ...child.val() };
                     instruments.push(instrument);
                 });
-                console.log(`Laddade ${instruments.length} instrument från Firebase`);
+                console.log(`[DEBUG] Laddade ${instruments.length} instrument från Firebase`);
                 updateInstrumentCount();
                 renderInstruments();
                 updateAlertSummary();
@@ -462,12 +462,21 @@
             database.ref('services').on('value', snap => {
                 services = [];
                 snap.forEach(child => services.push({ id: child.key, ...child.val() }));
+                console.log(`[DEBUG] Laddade ${services.length} serviceposter från Firebase`);
+                // Logga första servicen för att se strukturen
+                if (services.length > 0) {
+                    console.log('[DEBUG] Exempel på servicepost:', services[0]);
+                }
                 renderInstruments();
                 updateAlertSummary();
             });
             database.ref('calibrations').on('value', snap => {
                 calibrations = [];
                 snap.forEach(child => calibrations.push({ id: child.key, ...child.val() }));
+                console.log(`[DEBUG] Laddade ${calibrations.length} kalibreringsposter från Firebase`);
+                if (calibrations.length > 0) {
+                    console.log('[DEBUG] Exempel på kalibreringspost:', calibrations[0]);
+                }
                 renderInstruments();
                 updateAlertSummary();
             });
@@ -546,48 +555,72 @@
             });
         }
 
+        // Visa detaljerad instrumentvy med service- och kalibreringshistorik
         function showInstrumentDetails(instId) {
             const inst = instruments.find(i => i.id === instId);
-            if (!inst) return;
-            const instServices = services.filter(s => s.instrumentId === instId).sort((a,b) => new Date(b.date) - new Date(a.date));
+            if (!inst) {
+                console.error(`[ERROR] Instrument med id ${instId} hittades inte`);
+                return;
+            }
+            
+            console.log(`[DEBUG] Visar detaljer för instrument: ${inst.id} - ${inst.product}`);
+            
+            // Hämta alla servicer för detta instrument (sorterade efter datum nyast först)
+            const instServices = services.filter(s => s.instrumentId === inst.id).sort((a,b) => new Date(b.date) - new Date(a.date));
+            console.log(`[DEBUG] Hittade ${instServices.length} serviceposter för instrument ${inst.id}`);
+            
+            // Hämta alla kalibreringar för detta instrument (sorterade efter år/månad nyast först)
+            const instCalibrations = calibrations.filter(c => c.instrumentId === inst.id).sort((a,b) => (b.year - a.year) || (b.month - a.month));
+            console.log(`[DEBUG] Hittade ${instCalibrations.length} kalibreringsposter för instrument ${inst.id}`);
+            
             const serviceStatus = getServiceStatus(inst.next_service);
             const typeText = inst.type === 'gps' ? 'GPS' : 'Total Station';
             
-            const servicesHtml = instServices.map(s => `
-                <div class="bg-gray-50 rounded-lg p-3 mb-2">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <div class="font-medium">${formatDate(s.date)}</div>
-                            <div class="text-sm text-gray-600">${s.notes || ''}</div>
-                            ${s.certificateUrl ? `<a href="${s.certificateUrl}" target="_blank" class="text-blue-500 text-sm mt-1 inline-block">📄 Visa certifikat</a>` : ''}
-                        </div>
-                        <button onclick="deleteService('${s.id}')" class="text-red-500 text-sm">🗑️</button>
-                    </div>
-                </div>
-            `).join('');
-            
-            let extraFields = '';
-            if (inst.type === 'totalstation') {
-                const calStatus = getCurrentMonthCalibrationStatus(inst.id);
-                const instCalibrations = calibrations.filter(c => c.instrumentId === instId).sort((a,b) => (b.year - a.year) || (b.month - a.month));
-                const calibrationsHtml = instCalibrations.map(c => `
-                    <div class="bg-gray-50 rounded-lg p-3 mb-2">
+            // Bygg HTML för servicehistorik
+            let servicesHtml = '';
+            if (instServices.length === 0) {
+                servicesHtml = '<p class="text-gray-500 italic">Inga serviceregistreringar.</p>';
+            } else {
+                servicesHtml = instServices.map(s => `
+                    <div class="service-row bg-gray-50 rounded-lg p-3 mb-2">
                         <div class="flex justify-between items-start">
-                            <div>
-                                <div class="font-medium">${c.year}-${String(c.month).padStart(2,'0')} ${c.passed ? '✅ Godkänd' : '❌ Ej godkänd'}</div>
-                                <div class="text-sm text-gray-600">${c.notes || ''}</div>
+                            <div class="flex-1">
+                                <div class="font-medium">${formatDate(s.date)}</div>
+                                <div class="text-sm text-gray-600 mt-1">${s.notes || 'Inga anteckningar'}</div>
+                                ${s.certificateUrl ? `<a href="${s.certificateUrl}" target="_blank" class="text-blue-500 text-sm cert-link inline-block mt-1">📄 Visa certifikat</a>` : ''}
+                                <div class="text-xs text-gray-400 mt-1">Registrerad av: ${s.createdBy || s.updatedBy || 'Okänd'}</div>
                             </div>
-                            <button onclick="deleteCalibration('${c.id}')" class="text-red-500 text-sm">🗑️</button>
+                            <button onclick="deleteService('${s.id}')" class="text-red-500 text-sm ml-2">🗑️</button>
                         </div>
                     </div>
                 `).join('');
+            }
+            
+            // Bygg HTML för kalibreringshistorik
+            let calibrationsHtml = '';
+            if (instCalibrations.length === 0) {
+                calibrationsHtml = '<p class="text-gray-500 italic">Inga kalibreringsposter.</p>';
+            } else {
+                calibrationsHtml = instCalibrations.map(c => `
+                    <div class="calibration-row bg-gray-50 rounded-lg p-3 mb-2">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="font-medium">${c.year}-${String(c.month).padStart(2,'0')} ${c.passed ? '✅ Godkänd' : '❌ Ej godkänd'}</div>
+                                <div class="text-sm text-gray-600 mt-1">${c.notes || 'Inga anteckningar'}</div>
+                                <div class="text-xs text-gray-400 mt-1">Registrerad av: ${c.createdBy || c.updatedBy || 'Okänd'}</div>
+                            </div>
+                            <button onclick="deleteCalibration('${c.id}')" class="text-red-500 text-sm ml-2">🗑️</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+            
+            // Bygg extra fält beroende på typ (CCP eller internet)
+            let extraFields = '';
+            if (inst.type === 'totalstation') {
                 extraFields = `
                     <div><strong>CCP:</strong> ${inst.ccp || '-'} ${inst.ccpType ? `(${inst.ccpType})` : ''}</div>
                     <div><strong>CCP Slutdatum:</strong> ${inst.ccpEndDate || '-'}</div>
-                    <hr>
-                    <div><strong class="text-green-600">Kalibreringshistorik (${instCalibrations.length})</strong></div>
-                    <div>${calibrationsHtml || '<p class="text-gray-500">Inga kalibreringsposter.</p>'}</div>
-                    <div class="mt-2"><button onclick="addCalibration('${inst.id}')" class="text-sm bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600">+ Ny kalibrering</button></div>
                 `;
             } else if (inst.type === 'gps') {
                 const internetStatus = getInternetStatus(inst.next_internet);
@@ -596,11 +629,17 @@
                 `;
             }
             
-            showModalMessage(
-                getInstrumentDisplayName(inst),
-                `<div class="space-y-4">
-                    <div><span class="instrument-type-badge ${inst.type === 'gps' ? 'type-gps' : 'type-totalstation'}">${typeText}</span></div>
-                    <div class="grid grid-cols-2 gap-2 text-sm">
+            const modalContent = `
+                <div class="space-y-4">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <span class="instrument-type-badge ${inst.type === 'gps' ? 'type-gps' : 'type-totalstation'}">${typeText}</span>
+                            <h2 class="text-xl font-bold mt-1">${escapeHtml(getInstrumentDisplayName(inst))}</h2>
+                        </div>
+                        <div class="text-sm text-gray-500">ID: ${inst.id.substring(0,8)}...</div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-2 text-sm bg-gray-50 p-3 rounded">
                         <div><strong>Utrustningsnummer:</strong> ${inst.equipmentNumber || '-'}</div>
                         <div><strong>Serienummer:</strong> ${inst.serialNumber || '-'}</div>
                         <div><strong>Min Referens:</strong> ${inst.reference || '-'}</div>
@@ -608,30 +647,55 @@
                         <div><strong>Version:</strong> ${inst.version || '-'}</div>
                         <div><strong>Artikelnummer:</strong> ${inst.articleNumber || '-'}</div>
                     </div>
+                    
                     <div><strong>Nästa service:</strong> ${inst.next_service || '-'} <span class="alert-badge alert-${serviceStatus.color} ml-2">${serviceStatus.text}</span></div>
                     ${extraFields}
                     ${inst.iconUrl ? `<div><strong>Bild:</strong> <img src="${inst.iconUrl}" class="h-16 w-16 object-cover rounded mt-1"></div>` : ''}
                     <div><strong>Anteckningar:</strong> ${inst.notes || '-'}</div>
+                    
                     <hr>
-                    <div><strong class="text-blue-600">Servicehistorik (${instServices.length})</strong></div>
-                    <div>${servicesHtml || '<p class="text-gray-500">Inga serviceregistreringar.</p>'}</div>
-                    <div class="mt-2"><button onclick="addService('${inst.id}')" class="text-sm bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">+ Ny service</button></div>
-                </div>`,
-                true
-            );
+                    
+                    <div>
+                        <h3 class="text-lg font-semibold text-blue-600 mb-2">📋 Servicehistorik (${instServices.length})</h3>
+                        <div class="max-h-60 overflow-y-auto">
+                            ${servicesHtml}
+                        </div>
+                        <div class="mt-2">
+                            <button onclick="addService('${inst.id}')" class="text-sm bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">+ Ny service</button>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div>
+                        <h3 class="text-lg font-semibold text-green-600 mb-2">📅 Kalibreringshistorik (${instCalibrations.length})</h3>
+                        <div class="max-h-60 overflow-y-auto">
+                            ${calibrationsHtml}
+                        </div>
+                        ${inst.type === 'totalstation' ? `<div class="mt-2"><button onclick="addCalibration('${inst.id}')" class="text-sm bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600">+ Ny kalibrering</button></div>` : ''}
+                    </div>
+                </div>
+            `;
+            
+            showModalMessage(getInstrumentDisplayName(inst), modalContent, true);
         }
 
         function showModalMessage(title, body, isHtml = false) {
+            // Stäng eventuell befintlig modal
+            const existingModal = document.getElementById('instrumentDetailModal');
+            if (existingModal) existingModal.remove();
+            
             const modal = document.createElement('div');
             modal.className = 'modal';
             modal.style.display = 'block';
+            modal.id = 'instrumentDetailModal';
             modal.innerHTML = `
                 <div class="modal-content max-w-2xl">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-bold">${escapeHtml(title)}</h2>
                         <button onclick="this.closest('.modal').remove()" class="text-gray-500 text-2xl">&times;</button>
                     </div>
-                    <div class="max-h-[60vh] overflow-y-auto">${isHtml ? body : escapeHtml(body)}</div>
+                    <div class="max-h-[70vh] overflow-y-auto">${isHtml ? body : escapeHtml(body)}</div>
                     <div class="mt-4 text-right">
                         <button onclick="this.closest('.modal').remove()" class="bg-gray-300 px-4 py-1 rounded">Stäng</button>
                     </div>
@@ -790,20 +854,27 @@
                 const old = services.find(s => s.id === id);
                 await database.ref(`services/${id}`).update(data);
                 logAction('update', 'service', id, old, data);
+                alert('Service uppdaterad!');
             } else {
                 const newRef = database.ref('services').push();
                 data.createdAt = new Date().toISOString();
                 data.createdBy = currentUser.email;
                 await newRef.set(data);
                 logAction('create', 'service', newRef.key, null, data);
+                alert('Service sparad!');
             }
             closeModal('serviceModal');
+            // Stäng detaljvyn om den är öppen så att den uppdateras när användaren öppnar igen
+            const detailModal = document.getElementById('instrumentDetailModal');
+            if (detailModal) detailModal.remove();
         }
         function deleteService(id) {
             if (confirm('Ta bort denna service?')) {
                 const s = services.find(s => s.id === id);
                 database.ref(`services/${id}`).remove();
                 logAction('delete', 'service', id, s, null);
+                const detailModal = document.getElementById('instrumentDetailModal');
+                if (detailModal) detailModal.remove();
             }
         }
 
@@ -833,20 +904,26 @@
                 const old = calibrations.find(c => c.id === id);
                 await database.ref(`calibrations/${id}`).update(data);
                 logAction('update', 'calibration', id, old, data);
+                alert('Kalibrering uppdaterad!');
             } else {
                 const newRef = database.ref('calibrations').push();
                 data.createdAt = new Date().toISOString();
                 data.createdBy = currentUser.email;
                 await newRef.set(data);
                 logAction('create', 'calibration', newRef.key, null, data);
+                alert('Kalibrering sparad!');
             }
             closeModal('calibrationModal');
+            const detailModal = document.getElementById('instrumentDetailModal');
+            if (detailModal) detailModal.remove();
         }
         function deleteCalibration(id) {
             if (confirm('Ta bort denna kalibreringspost?')) {
                 const c = calibrations.find(c => c.id === id);
                 database.ref(`calibrations/${id}`).remove();
                 logAction('delete', 'calibration', id, c, null);
+                const detailModal = document.getElementById('instrumentDetailModal');
+                if (detailModal) detailModal.remove();
             }
         }
 
@@ -855,7 +932,6 @@
             const errorDiv = document.getElementById('uploadError');
             errorDiv.style.display = 'none';
             
-            // Kontrollera om preset finns
             const widget = cloudinary.createUploadWidget({
                 cloudName: cloudName,
                 uploadPreset: uploadPreset,
