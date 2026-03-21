@@ -43,6 +43,9 @@
         .info-message { background-color: #dbeafe; color: #1e40af; padding: 8px 12px; border-radius: 8px; font-size: 0.75rem; margin-top: 8px; }
         .refresh-btn { background: none; border: none; color: #3b82f6; cursor: pointer; font-size: 0.8rem; text-decoration: underline; }
         .refresh-btn:hover { color: #1e40af; }
+        .sort-btn { background: none; border: none; cursor: pointer; font-size: 0.75rem; color: #6b7280; display: inline-flex; align-items: center; gap: 2px; margin-left: 8px; }
+        .sort-btn:hover { color: #374151; }
+        .expand-btn { background: none; border: none; cursor: pointer; font-size: 0.75rem; color: #3b82f6; text-decoration: underline; margin-left: 8px; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
@@ -349,6 +352,30 @@
         let calibrations = [];
         let currentInstrumentId = null;     // För att hålla reda på vilket instrument som visas i modal
 
+        // State for sorting and expansion
+        let currentServiceSortDir = 'desc'; // 'desc' = newest first, 'asc' = oldest first
+        let currentCalibrationSortDir = 'desc';
+        let serviceLimit = 3;   // number or 'all'
+        let calibrationLimit = 3;
+
+        // Helper functions for sorting and expansion
+        function toggleServiceSort() {
+            currentServiceSortDir = currentServiceSortDir === 'desc' ? 'asc' : 'desc';
+            if (currentInstrumentId) showInstrumentDetails(currentInstrumentId);
+        }
+        function toggleCalibrationSort() {
+            currentCalibrationSortDir = currentCalibrationSortDir === 'desc' ? 'asc' : 'desc';
+            if (currentInstrumentId) showInstrumentDetails(currentInstrumentId);
+        }
+        function toggleServiceLimit() {
+            serviceLimit = serviceLimit === 3 ? 'all' : 3;
+            if (currentInstrumentId) showInstrumentDetails(currentInstrumentId);
+        }
+        function toggleCalibrationLimit() {
+            calibrationLimit = calibrationLimit === 3 ? 'all' : 3;
+            if (currentInstrumentId) showInstrumentDetails(currentInstrumentId);
+        }
+
         // Hjälpfunktion för att få svensk datum
         function getSwedenDate() {
             const now = new Date();
@@ -470,7 +497,6 @@
                 }
                 renderInstruments();
                 updateAlertSummary();
-                // Om modal är öppen, uppdatera den
                 if (currentInstrumentId) {
                     showInstrumentDetails(currentInstrumentId);
                 }
@@ -574,23 +600,44 @@
             currentInstrumentId = instId;
             console.log(`[DEBUG] Visar detaljer för instrument: ${inst.id} - ${inst.product}`);
             
-            // Hämta alla servicer för detta instrument (sorterade efter datum nyast först)
-            const instServices = services.filter(s => String(s.instrumentId) === String(inst.id)).sort((a,b) => new Date(b.date) - new Date(a.date));
+            // Hämta alla servicer för detta instrument
+            let instServices = services.filter(s => String(s.instrumentId) === String(inst.id));
+            // Sortera baserat på currentServiceSortDir
+            instServices.sort((a, b) => {
+                const dateA = new Date(a.date);
+                const dateB = new Date(b.date);
+                if (currentServiceSortDir === 'desc') return dateB - dateA;
+                else return dateA - dateB;
+            });
             console.log(`[DEBUG] Hittade ${instServices.length} serviceposter för instrument ${inst.id}`);
             
-            // Hämta alla kalibreringar för detta instrument (sorterade efter år/månad nyast först)
-            const instCalibrations = calibrations.filter(c => String(c.instrumentId) === String(inst.id)).sort((a,b) => (b.year - a.year) || (b.month - a.month));
+            // Hämta alla kalibreringar för detta instrument
+            let instCalibrations = calibrations.filter(c => String(c.instrumentId) === String(inst.id));
+            // Sortera baserat på currentCalibrationSortDir
+            instCalibrations.sort((a, b) => {
+                if (currentCalibrationSortDir === 'desc') {
+                    if (a.year !== b.year) return b.year - a.year;
+                    else return b.month - a.month;
+                } else {
+                    if (a.year !== b.year) return a.year - b.year;
+                    else return a.month - b.month;
+                }
+            });
             console.log(`[DEBUG] Hittade ${instCalibrations.length} kalibreringsposter för instrument ${inst.id}`);
             
             const serviceStatus = getServiceStatus(inst.next_service);
             const typeText = inst.type === 'gps' ? 'GPS' : 'Total Station';
             
+            // Begränsa antal om limit är ett nummer
+            const displayServices = serviceLimit === 'all' ? instServices : instServices.slice(0, serviceLimit);
+            const displayCalibrations = calibrationLimit === 'all' ? instCalibrations : instCalibrations.slice(0, calibrationLimit);
+            
             // Bygg HTML för servicehistorik
             let servicesHtml = '';
-            if (instServices.length === 0) {
+            if (displayServices.length === 0) {
                 servicesHtml = '<p class="text-gray-500 italic">Inga serviceregistreringar.</p>';
             } else {
-                servicesHtml = instServices.map(s => `
+                servicesHtml = displayServices.map(s => `
                     <div class="service-row bg-gray-50 rounded-lg p-3 mb-2">
                         <div class="flex justify-between items-start">
                             <div class="flex-1">
@@ -607,10 +654,10 @@
             
             // Bygg HTML för kalibreringshistorik
             let calibrationsHtml = '';
-            if (instCalibrations.length === 0) {
+            if (displayCalibrations.length === 0) {
                 calibrationsHtml = '<p class="text-gray-500 italic">Inga kalibreringsposter.</p>';
             } else {
-                calibrationsHtml = instCalibrations.map(c => `
+                calibrationsHtml = displayCalibrations.map(c => `
                     <div class="calibration-row bg-gray-50 rounded-lg p-3 mb-2">
                         <div class="flex justify-between items-start">
                             <div class="flex-1">
@@ -667,7 +714,19 @@
                     <hr>
                     
                     <div>
-                        <h3 class="text-lg font-semibold text-blue-600 mb-2">📋 Servicehistorik (${instServices.length})</h3>
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-semibold text-blue-600 mb-2">📋 Servicehistorik (${instServices.length})</h3>
+                            <div>
+                                <button onclick="toggleServiceSort()" class="sort-btn">
+                                    ${currentServiceSortDir === 'desc' ? '⬇ Nyast först' : '⬆ Äldst först'}
+                                </button>
+                                ${instServices.length > 3 ? `
+                                    <button onclick="toggleServiceLimit()" class="expand-btn">
+                                        ${serviceLimit === 3 ? 'Visa fler' : 'Visa färre'}
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
                         <div class="max-h-60 overflow-y-auto">
                             ${servicesHtml}
                         </div>
@@ -679,7 +738,19 @@
                     <hr>
                     
                     <div>
-                        <h3 class="text-lg font-semibold text-green-600 mb-2">📅 Kalibreringshistorik (${instCalibrations.length})</h3>
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-semibold text-green-600 mb-2">📅 Kalibreringshistorik (${instCalibrations.length})</h3>
+                            <div>
+                                <button onclick="toggleCalibrationSort()" class="sort-btn">
+                                    ${currentCalibrationSortDir === 'desc' ? '⬇ Nyast först' : '⬆ Äldst först'}
+                                </button>
+                                ${instCalibrations.length > 3 ? `
+                                    <button onclick="toggleCalibrationLimit()" class="expand-btn">
+                                        ${calibrationLimit === 3 ? 'Visa fler' : 'Visa färre'}
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
                         <div class="max-h-60 overflow-y-auto">
                             ${calibrationsHtml}
                         </div>
@@ -695,7 +766,6 @@
                 if (modalBody) {
                     modalBody.innerHTML = modalContent;
                 }
-                // Scrolla till toppen av modal-innehållet
                 existingModal.querySelector('.max-h-\\[70vh\\]').scrollTop = 0;
             } else {
                 showModalMessage(getInstrumentDisplayName(inst), modalContent, true);
@@ -891,7 +961,6 @@
                 alert('Service sparad!');
             }
             closeModal('serviceModal');
-            // Uppdatera modal om den är öppen
             if (currentInstrumentId) {
                 showInstrumentDetails(currentInstrumentId);
             }
