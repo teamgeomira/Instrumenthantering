@@ -41,6 +41,8 @@
         .type-gps { background-color: #d1fae5; color: #065f46; }
         .error-message { background-color: #fee2e2; color: #991b1b; padding: 8px 12px; border-radius: 8px; font-size: 0.75rem; margin-top: 8px; display: none; }
         .info-message { background-color: #dbeafe; color: #1e40af; padding: 8px 12px; border-radius: 8px; font-size: 0.75rem; margin-top: 8px; }
+        .refresh-btn { background: none; border: none; color: #3b82f6; cursor: pointer; font-size: 0.8rem; text-decoration: underline; }
+        .refresh-btn:hover { color: #1e40af; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
@@ -84,9 +86,7 @@
         </header>
 
         <!-- Sammanfattning av varningar -->
-        <div id="alertSummary" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <!-- Dynamisk innehåll -->
-        </div>
+        <div id="alertSummary" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6"></div>
 
         <!-- Statistik -->
         <div class="flex justify-between items-center mb-4">
@@ -243,9 +243,6 @@
                 <h2 class="text-xl font-bold">Lägg till service</h2>
                 <button onclick="closeModal('serviceModal')" class="text-gray-500 text-2xl">&times;</button>
             </div>
-            <div id="cloudinaryInfo" class="info-message mb-3 hidden">
-                ⚠️ Upload preset "instrument_certificates" saknas. <a href="https://cloudinary.com/console/settings/upload" target="_blank" class="underline">Klicka här för att skapa det</a> i Cloudinary-inställningarna (Signing mode: Unsigned).
-            </div>
             <form id="serviceForm">
                 <input type="hidden" id="serviceInstrumentId">
                 <input type="hidden" id="serviceId">
@@ -344,12 +341,13 @@
 
         // Cloudinary config
         const cloudName = 'dc1zqri3o';
-        const uploadPreset = 'instrument_certificates'; // SKAPA DETTA PRESET I CLOUDINARY!
+        const uploadPreset = 'instrument_certificates';
 
         let currentUser = null;
         let instruments = [];
         let services = [];
         let calibrations = [];
+        let currentInstrumentId = null;     // För att hålla reda på vilket instrument som visas i modal
 
         // Hjälpfunktion för att få svensk datum
         function getSwedenDate() {
@@ -384,7 +382,7 @@
             const today = getSwedenDate();
             const currentYear = today.getFullYear();
             const currentMonth = today.getMonth() + 1;
-            const cal = calibrations.find(c => c.instrumentId === instrumentId && c.year === currentYear && c.month === currentMonth);
+            const cal = calibrations.find(c => String(c.instrumentId) === String(instrumentId) && c.year === currentYear && c.month === currentMonth);
             if (!cal) return { color: 'red', text: 'Saknas denna månad' };
             if (!cal.passed) return { color: 'red', text: 'Ej godkänd' };
             return { color: 'green', text: 'Godkänd' };
@@ -458,17 +456,24 @@
                 updateInstrumentCount();
                 renderInstruments();
                 updateAlertSummary();
+                // Om modal är öppen, uppdatera den
+                if (currentInstrumentId) {
+                    showInstrumentDetails(currentInstrumentId);
+                }
             });
             database.ref('services').on('value', snap => {
                 services = [];
                 snap.forEach(child => services.push({ id: child.key, ...child.val() }));
                 console.log(`[DEBUG] Laddade ${services.length} serviceposter från Firebase`);
-                // Logga första servicen för att se strukturen
                 if (services.length > 0) {
                     console.log('[DEBUG] Exempel på servicepost:', services[0]);
                 }
                 renderInstruments();
                 updateAlertSummary();
+                // Om modal är öppen, uppdatera den
+                if (currentInstrumentId) {
+                    showInstrumentDetails(currentInstrumentId);
+                }
             });
             database.ref('calibrations').on('value', snap => {
                 calibrations = [];
@@ -479,6 +484,9 @@
                 }
                 renderInstruments();
                 updateAlertSummary();
+                if (currentInstrumentId) {
+                    showInstrumentDetails(currentInstrumentId);
+                }
             });
         }
 
@@ -502,7 +510,7 @@
             }
             const sortedInstruments = [...instruments].sort((a, b) => (a.product || a.name || '').localeCompare(b.product || b.name || ''));
             sortedInstruments.forEach(inst => {
-                const instServices = services.filter(s => s.instrumentId === inst.id);
+                const instServices = services.filter(s => String(s.instrumentId) === String(inst.id));
                 const serviceStatus = getServiceStatus(inst.next_service);
                 const typeClass = inst.type === 'gps' ? 'type-gps' : 'type-totalstation';
                 const typeText = inst.type === 'gps' ? 'GPS' : 'Total Station';
@@ -563,14 +571,15 @@
                 return;
             }
             
+            currentInstrumentId = instId;
             console.log(`[DEBUG] Visar detaljer för instrument: ${inst.id} - ${inst.product}`);
             
             // Hämta alla servicer för detta instrument (sorterade efter datum nyast först)
-            const instServices = services.filter(s => s.instrumentId === inst.id).sort((a,b) => new Date(b.date) - new Date(a.date));
+            const instServices = services.filter(s => String(s.instrumentId) === String(inst.id)).sort((a,b) => new Date(b.date) - new Date(a.date));
             console.log(`[DEBUG] Hittade ${instServices.length} serviceposter för instrument ${inst.id}`);
             
             // Hämta alla kalibreringar för detta instrument (sorterade efter år/månad nyast först)
-            const instCalibrations = calibrations.filter(c => c.instrumentId === inst.id).sort((a,b) => (b.year - a.year) || (b.month - a.month));
+            const instCalibrations = calibrations.filter(c => String(c.instrumentId) === String(inst.id)).sort((a,b) => (b.year - a.year) || (b.month - a.month));
             console.log(`[DEBUG] Hittade ${instCalibrations.length} kalibreringsposter för instrument ${inst.id}`);
             
             const serviceStatus = getServiceStatus(inst.next_service);
@@ -636,7 +645,9 @@
                             <span class="instrument-type-badge ${inst.type === 'gps' ? 'type-gps' : 'type-totalstation'}">${typeText}</span>
                             <h2 class="text-xl font-bold mt-1">${escapeHtml(getInstrumentDisplayName(inst))}</h2>
                         </div>
-                        <div class="text-sm text-gray-500">ID: ${inst.id.substring(0,8)}...</div>
+                        <div>
+                            <button onclick="refreshCurrentModal()" class="refresh-btn">🔄 Uppdatera</button>
+                        </div>
                     </div>
                     
                     <div class="grid grid-cols-2 gap-2 text-sm bg-gray-50 p-3 rounded">
@@ -677,11 +688,27 @@
                 </div>
             `;
             
-            showModalMessage(getInstrumentDisplayName(inst), modalContent, true);
+            // Uppdatera befintlig modal eller skapa ny
+            const existingModal = document.getElementById('instrumentDetailModal');
+            if (existingModal) {
+                const modalBody = existingModal.querySelector('.modal-content > div:last-child');
+                if (modalBody) {
+                    modalBody.innerHTML = modalContent;
+                }
+                // Scrolla till toppen av modal-innehållet
+                existingModal.querySelector('.max-h-\\[70vh\\]').scrollTop = 0;
+            } else {
+                showModalMessage(getInstrumentDisplayName(inst), modalContent, true);
+            }
+        }
+        
+        function refreshCurrentModal() {
+            if (currentInstrumentId) {
+                showInstrumentDetails(currentInstrumentId);
+            }
         }
 
         function showModalMessage(title, body, isHtml = false) {
-            // Stäng eventuell befintlig modal
             const existingModal = document.getElementById('instrumentDetailModal');
             if (existingModal) existingModal.remove();
             
@@ -693,11 +720,11 @@
                 <div class="modal-content max-w-2xl">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-bold">${escapeHtml(title)}</h2>
-                        <button onclick="this.closest('.modal').remove()" class="text-gray-500 text-2xl">&times;</button>
+                        <button onclick="this.closest('.modal').remove(); currentInstrumentId = null;" class="text-gray-500 text-2xl">&times;</button>
                     </div>
                     <div class="max-h-[70vh] overflow-y-auto">${isHtml ? body : escapeHtml(body)}</div>
                     <div class="mt-4 text-right">
-                        <button onclick="this.closest('.modal').remove()" class="bg-gray-300 px-4 py-1 rounded">Stäng</button>
+                        <button onclick="this.closest('.modal').remove(); currentInstrumentId = null;" class="bg-gray-300 px-4 py-1 rounded">Stäng</button>
                     </div>
                 </div>
             `;
@@ -864,17 +891,19 @@
                 alert('Service sparad!');
             }
             closeModal('serviceModal');
-            // Stäng detaljvyn om den är öppen så att den uppdateras när användaren öppnar igen
-            const detailModal = document.getElementById('instrumentDetailModal');
-            if (detailModal) detailModal.remove();
+            // Uppdatera modal om den är öppen
+            if (currentInstrumentId) {
+                showInstrumentDetails(currentInstrumentId);
+            }
         }
         function deleteService(id) {
             if (confirm('Ta bort denna service?')) {
                 const s = services.find(s => s.id === id);
                 database.ref(`services/${id}`).remove();
                 logAction('delete', 'service', id, s, null);
-                const detailModal = document.getElementById('instrumentDetailModal');
-                if (detailModal) detailModal.remove();
+                if (currentInstrumentId) {
+                    showInstrumentDetails(currentInstrumentId);
+                }
             }
         }
 
@@ -914,16 +943,18 @@
                 alert('Kalibrering sparad!');
             }
             closeModal('calibrationModal');
-            const detailModal = document.getElementById('instrumentDetailModal');
-            if (detailModal) detailModal.remove();
+            if (currentInstrumentId) {
+                showInstrumentDetails(currentInstrumentId);
+            }
         }
         function deleteCalibration(id) {
             if (confirm('Ta bort denna kalibreringspost?')) {
                 const c = calibrations.find(c => c.id === id);
                 database.ref(`calibrations/${id}`).remove();
                 logAction('delete', 'calibration', id, c, null);
-                const detailModal = document.getElementById('instrumentDetailModal');
-                if (detailModal) detailModal.remove();
+                if (currentInstrumentId) {
+                    showInstrumentDetails(currentInstrumentId);
+                }
             }
         }
 
@@ -976,11 +1007,11 @@
                 filteredInstruments = filteredInstruments.filter(i => i.type === typeFilter);
             }
             
-            let filteredServices = services.filter(s => filteredInstruments.some(inst => inst.id === s.instrumentId));
+            let filteredServices = services.filter(s => filteredInstruments.some(inst => String(inst.id) === String(s.instrumentId)));
             if (serviceFrom) filteredServices = filteredServices.filter(s => s.date >= serviceFrom);
             if (serviceTo) filteredServices = filteredServices.filter(s => s.date <= serviceTo);
             
-            let filteredCalibrations = calibrations.filter(c => filteredInstruments.some(inst => inst.id === c.instrumentId && inst.type === 'totalstation'));
+            let filteredCalibrations = calibrations.filter(c => filteredInstruments.some(inst => String(inst.id) === String(c.instrumentId) && inst.type === 'totalstation'));
             if (calYear !== 'all') filteredCalibrations = filteredCalibrations.filter(c => c.year == calYear);
 
             const wb = XLSX.utils.book_new();
@@ -998,7 +1029,7 @@
             XLSX.utils.book_append_sheet(wb, wsInstr, 'Instrument');
 
             const servData = filteredServices.map(s => {
-                const inst = instruments.find(i => i.id === s.instrumentId);
+                const inst = instruments.find(i => String(i.id) === String(s.instrumentId));
                 return [inst ? inst.product || inst.name : 'Okänd', s.date, s.certificateUrl || '', s.notes || ''];
             });
             const wsServ = XLSX.utils.aoa_to_sheet([['Instrument', 'Datum', 'Certifikat', 'Anteckningar'], ...servData]);
@@ -1006,7 +1037,7 @@
 
             if (filteredCalibrations.length > 0) {
                 const calData = filteredCalibrations.map(c => {
-                    const inst = instruments.find(i => i.id === c.instrumentId);
+                    const inst = instruments.find(i => String(i.id) === String(c.instrumentId));
                     return [inst ? inst.product || inst.name : 'Okänd', c.year, c.month, c.passed ? 'Ja' : 'Nej', c.notes || ''];
                 });
                 const wsCal = XLSX.utils.aoa_to_sheet([['Instrument', 'År', 'Månad', 'Godkänd', 'Anteckningar'], ...calData]);
@@ -1031,14 +1062,14 @@
             XLSX.utils.book_append_sheet(wb, wsInstr, 'Instrument');
 
             const servData = services.map(s => {
-                const inst = instruments.find(i => i.id === s.instrumentId);
+                const inst = instruments.find(i => String(i.id) === String(s.instrumentId));
                 return [inst ? inst.product || inst.name : 'Okänd', s.date, s.certificateUrl || '', s.notes || ''];
             });
             const wsServ = XLSX.utils.aoa_to_sheet([['Instrument', 'Datum', 'Certifikat', 'Anteckningar'], ...servData]);
             XLSX.utils.book_append_sheet(wb, wsServ, 'Service');
 
             const calData = calibrations.map(c => {
-                const inst = instruments.find(i => i.id === c.instrumentId);
+                const inst = instruments.find(i => String(i.id) === String(c.instrumentId));
                 return [inst ? inst.product || inst.name : 'Okänd', c.year, c.month, c.passed ? 'Ja' : 'Nej', c.notes || ''];
             });
             const wsCal = XLSX.utils.aoa_to_sheet([['Instrument', 'År', 'Månad', 'Godkänd', 'Anteckningar'], ...calData]);
