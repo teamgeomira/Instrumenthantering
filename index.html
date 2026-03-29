@@ -961,32 +961,54 @@
 
         function uploadToCloudinary(fieldId, previewId, isImage = false) {
             const errorDiv = document.getElementById('uploadError');
-            errorDiv.style.display = 'none';
+            if (errorDiv) errorDiv.style.display = 'none';
+        
+            // Detectar si esperamos un PDF (por el campo o por el contexto)
+            const isPdfUpload = (fieldId === 'serviceCertUrl'); // Solo para certificados
+        
             const widget = cloudinary.createUploadWidget({
                 cloudName: cloudName,
                 uploadPreset: uploadPreset,
                 sources: ['local', 'url', 'camera'],
-                multiple: false
+                multiple: false,
+                resourceType: 'auto',   // Detecta automáticamente el tipo de archivo
+                clientAllowedFormats: isPdfUpload ? ['pdf', 'png', 'jpg', 'jpeg'] : ['png', 'jpg', 'jpeg', 'gif', 'svg']
             }, (error, result) => {
                 if (error) {
                     console.error('Cloudinary error:', error);
-                    errorDiv.innerHTML = '❌ Uppladdning misslyckades. Kontrollera att upload preset "instrument_certificates" finns i Cloudinary.';
-                    errorDiv.style.display = 'block';
+                    if (errorDiv) {
+                        errorDiv.innerHTML = '❌ Uppladdning misslyckades. Kontrollera upload preset.';
+                        errorDiv.style.display = 'block';
+                    } else {
+                        alert('Uppladdning misslyckades: ' + error.message);
+                    }
                     return;
                 }
                 if (result && result.event === 'success') {
-                    const url = result.info.secure_url;
-                    document.getElementById(fieldId).value = url;
-                    if (previewId && isImage) {
-                        const previewDiv = document.getElementById(previewId);
-                        if (previewDiv) {
-                            previewDiv.innerHTML = `<img src="${url}" class="image-preview"><button type="button" onclick="clearIconPreview()" class="text-xs text-red-500 mt-1">Ta bort bild</button>`;
-                        }
-                        updateIconPreview();
-                    } else if (previewId) {
-                        document.getElementById(previewId).innerHTML = `<a href="${url}" target="_blank" class="text-blue-500">📄 Öppna certifikat</a>`;
+                    let url = result.info.secure_url;
+                    const resourceType = result.info.resource_type; // 'image' o 'raw'
+                    
+                    // Si es un PDF y la URL apunta a /image/upload/, corregir a /raw/upload/
+                    if (resourceType === 'raw' || (url.endsWith('.pdf') && url.includes('/image/upload/'))) {
+                        url = url.replace('/image/upload/', '/raw/upload/');
                     }
-                    errorDiv.style.display = 'none';
+                    
+                    const targetField = document.getElementById(fieldId);
+                    if (targetField) targetField.value = url;
+        
+                    // Actualizar vista previa
+                    if (previewId) {
+                        const previewElem = document.getElementById(previewId);
+                        if (previewElem) {
+                            if (isImage || (!url.endsWith('.pdf') && resourceType === 'image')) {
+                                previewElem.innerHTML = `<img src="${url}" class="image-preview"><button type="button" onclick="clearIconPreview()" class="text-xs text-red-500 mt-1">Ta bort bild</button>`;
+                            } else {
+                                previewElem.innerHTML = `<a href="${url}" target="_blank" class="text-blue-500">📄 Öppna certifikat (PDF)</a>`;
+                            }
+                        }
+                    }
+                    if (errorDiv) errorDiv.style.display = 'none';
+                    console.log('Uppladdning lyckades, URL:', url);
                 }
             });
             widget.open();
