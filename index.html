@@ -710,7 +710,7 @@
                     <div>
                         <div class="flex justify-between items-center">
                             <h3 class="text-lg font-semibold text-blue-600">📋 Servicehistorik (${instServices.length})</h3>
-                            <button onclick="addService('${inst.id}')" class="text-sm bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">+ Ny service</button>
+                            <button onclick="closeModal('instrumentDetailModal'); addService('${inst.id}')" class="text-sm bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">+ Ny service</button>
                         </div>
                         ${servicesHtml}
                     </div>
@@ -720,7 +720,7 @@
                     <div>
                         <div class="flex justify-between items-center">
                             <h3 class="text-lg font-semibold text-green-600">📅 Kalibreringshistorik (${instCalibrations.length})</h3>
-                            ${inst.type === 'totalstation' ? `<button onclick="addCalibration('${inst.id}')" class="text-sm bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600">+ Ny kalibrering</button>` : ''}
+                            ${inst.type === 'totalstation' ? `<button onclick="closeModal('instrumentDetailModal'); addCalibration('${inst.id}')" class="text-sm bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600">+ Ny kalibrering</button>` : ''}
                         </div>
                         ${calibrationsHtml}
                     </div>
@@ -959,56 +959,44 @@
             document.getElementById('iconPreview').classList.add('hidden');
         }
 
+        // ------------------------------
+        // Cloudinary upload - CORRECTED to handle PDFs and images
+        // ------------------------------
         function uploadToCloudinary(fieldId, previewId, isImage = false) {
             const errorDiv = document.getElementById('uploadError');
             if (errorDiv) errorDiv.style.display = 'none';
-        
-            // Detectar si esperamos un PDF (por el campo o por el contexto)
-            const isPdfUpload = (fieldId === 'serviceCertUrl'); // Solo para certificados
-        
             const widget = cloudinary.createUploadWidget({
                 cloudName: cloudName,
                 uploadPreset: uploadPreset,
-                sources: ['local', 'url', 'camera'],
-                multiple: false,
-                resourceType: 'auto',   // Detecta automáticamente el tipo de archivo
-                clientAllowedFormats: isPdfUpload ? ['pdf', 'png', 'jpg', 'jpeg'] : ['png', 'jpg', 'jpeg', 'gif', 'svg']
+                resourceType: "auto",          // CRITICAL: allows PDFs (raw) and images
+                clientAllowedFormats: ["jpg", "jpeg", "png", "pdf"],  // accept PDFs
+                multiple: false
             }, (error, result) => {
                 if (error) {
                     console.error('Cloudinary error:', error);
                     if (errorDiv) {
-                        errorDiv.innerHTML = '❌ Uppladdning misslyckades. Kontrollera upload preset.';
+                        errorDiv.innerHTML = '❌ Uppladdning misslyckades. Kontrollera upload preset "instrument_certificates" i Cloudinary.';
                         errorDiv.style.display = 'block';
-                    } else {
-                        alert('Uppladdning misslyckades: ' + error.message);
                     }
                     return;
                 }
                 if (result && result.event === 'success') {
-                    let url = result.info.secure_url;
-                    const resourceType = result.info.resource_type; // 'image' o 'raw'
-                    
-                    // Si es un PDF y la URL apunta a /image/upload/, corregir a /raw/upload/
-                    if (resourceType === 'raw' || (url.endsWith('.pdf') && url.includes('/image/upload/'))) {
-                        url = url.replace('/image/upload/', '/raw/upload/');
-                    }
-                    
-                    const targetField = document.getElementById(fieldId);
-                    if (targetField) targetField.value = url;
-        
-                    // Actualizar vista previa
-                    if (previewId) {
-                        const previewElem = document.getElementById(previewId);
-                        if (previewElem) {
-                            if (isImage || (!url.endsWith('.pdf') && resourceType === 'image')) {
-                                previewElem.innerHTML = `<img src="${url}" class="image-preview"><button type="button" onclick="clearIconPreview()" class="text-xs text-red-500 mt-1">Ta bort bild</button>`;
-                            } else {
-                                previewElem.innerHTML = `<a href="${url}" target="_blank" class="text-blue-500">📄 Öppna certifikat (PDF)</a>`;
-                            }
+                    const url = result.info.secure_url;
+                    document.getElementById(fieldId).value = url;
+                    if (previewId && isImage) {
+                        const previewDiv = document.getElementById(previewId);
+                        if (previewDiv) {
+                            previewDiv.innerHTML = `<img src="${url}" class="image-preview"><button type="button" onclick="clearIconPreview()" class="text-xs text-red-500 mt-1">Ta bort bild</button>`;
+                        }
+                        updateIconPreview();
+                    } else if (previewId) {
+                        const previewDiv = document.getElementById(previewId);
+                        if (previewDiv) {
+                            // For PDFs or other non-image files, show a clickable link
+                            previewDiv.innerHTML = `<a href="${url}" target="_blank" class="text-blue-500">📄 Öppna certifikat</a>`;
                         }
                     }
                     if (errorDiv) errorDiv.style.display = 'none';
-                    console.log('Uppladdning lyckades, URL:', url);
                 }
             });
             widget.open();
