@@ -46,7 +46,18 @@
         .data-table th { background-color: #f9fafb; font-weight: 600; color: #374151; }
         .data-table tr:hover { background-color: #f9fafb; }
         .action-btn { color: #ef4444; font-size: 0.75rem; cursor: pointer; text-decoration: underline; margin-left: 12px; }
-        .cert-link { color: #3b82f6; text-decoration: underline; font-size: 0.75rem; }
+        .cert-link { color: #3b82f6; text-decoration: underline; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 4px; background-color: #eff6ff; padding: 4px 8px; border-radius: 6px; transition: all 0.2s; }
+        .cert-link:hover { background-color: #dbeafe; }
+        .pdf-link { background-color: #fee2e2; color: #dc2626; }
+        .pdf-link:hover { background-color: #fecaca; }
+        .toast-notification { position: fixed; bottom: 20px; right: 20px; background-color: #10b981; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 9999; animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .file-preview-container { margin-top: 12px; padding: 12px; background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
+        .file-preview-link { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background-color: white; border-radius: 6px; text-decoration: none; color: #3b82f6; border: 1px solid #e2e8f0; transition: all 0.2s; }
+        .file-preview-link:hover { background-color: #eff6ff; border-color: #3b82f6; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
@@ -266,7 +277,7 @@
                         <input type="text" id="serviceCertUrl" placeholder="URL till certifikat (kan vara länk eller ladda upp)" class="flex-1 border rounded p-2">
                         <button type="button" id="uploadCertBtn" class="bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600">Ladda upp</button>
                     </div>
-                    <div id="certPreview" class="mt-1 text-xs text-gray-500"></div>
+                    <div id="certPreview" class="mt-2"></div>
                     <div id="uploadError" class="error-message"></div>
                 </div>
                 <div class="mb-3">
@@ -375,7 +386,7 @@
         let instruments = [];
         let services = [];
         let calibrations = [];
-        let currentInstrumentId = null;   // the instrument whose details are shown
+        let currentInstrumentId = null;
 
         // ------------------------------
         // Helper functions
@@ -413,6 +424,36 @@
             if (!cal) return { color: 'red', text: 'Saknas denna månad' };
             if (!cal.passed) return { color: 'red', text: 'Ej godkänd' };
             return { color: 'green', text: 'Godkänd' };
+        }
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            toast.innerHTML = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function isPDFUrl(url) {
+            if (!url) return false;
+            return url.toLowerCase().includes('.pdf') || 
+                   url.includes('/pdf/') || 
+                   url.includes('raw/upload') ||
+                   url.match(/\.pdf(\?|$)/i);
+        }
+
+        function isImageUrl(url) {
+            if (!url) return false;
+            return url.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/i);
+        }
+
+        function getFileTypeIcon(url) {
+            if (isPDFUrl(url)) return '📄';
+            if (isImageUrl(url)) return '🖼️';
+            return '📎';
         }
 
         // Update alert summary cards
@@ -473,7 +514,6 @@
         // Data loading with real-time listeners
         // ------------------------------
         function loadData() {
-            // Instruments
             database.ref('instruments').on('value', snap => {
                 instruments = [];
                 snap.forEach(child => {
@@ -489,19 +529,17 @@
                 }
             });
 
-            // Services
             database.ref('services').on('value', snap => {
                 services = [];
                 snap.forEach(child => {
                     services.push({ id: child.key, ...child.val() });
                 });
                 console.log(`[LOAD] Services loaded: ${services.length}`);
-                renderInstruments();   // update service count on cards
+                renderInstruments();
                 updateAlertSummary();
                 if (currentInstrumentId) refreshInstrumentDetails();
             });
 
-            // Calibrations
             database.ref('calibrations').on('value', snap => {
                 calibrations = [];
                 snap.forEach(child => {
@@ -595,25 +633,19 @@
             const inst = instruments.find(i => i.id === currentInstrumentId);
             if (!inst) return;
 
-            // Get services for this instrument
             let instServices = services.filter(s => String(s.instrumentId) === String(inst.id));
-            // Sort newest first by date
             instServices.sort((a,b) => new Date(b.date) - new Date(a.date));
-            console.log(`[DETAIL] Instrument ${inst.id} has ${instServices.length} services`);
 
-            // Get calibrations
             let instCalibrations = calibrations.filter(c => String(c.instrumentId) === String(inst.id));
-            // Sort newest first by year-month
             instCalibrations.sort((a,b) => {
                 if (a.year !== b.year) return b.year - a.year;
                 return b.month - a.month;
             });
-            console.log(`[DETAIL] Instrument ${inst.id} has ${instCalibrations.length} calibrations`);
 
             const serviceStatus = getServiceStatus(inst.next_service);
             const typeText = inst.type === 'gps' ? 'GPS' : 'Total Station';
 
-            // Build services table
+            // Build services table with improved certificate display
             let servicesHtml = '';
             if (instServices.length === 0) {
                 servicesHtml = '<p class="text-gray-500 italic mt-2">Inga serviceregistreringar.</p>';
@@ -622,18 +654,39 @@
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
-                                <tr><th>Datum</th><th>Anteckningar</th><th>Certifikat</th><th>Registrerad av</th><th></th></tr>
+                                <tr>
+                                    <th>Datum</th>
+                                    <th>Anteckningar</th>
+                                    <th>Certifikat</th>
+                                    <th>Registrerad av</th>
+                                    <th></th>
+                                </tr>
                             </thead>
                             <tbody>
-                                ${instServices.map(s => `
-                                    <tr>
-                                        <td>${formatDate(s.date)}</td>
-                                        <td>${escapeHtml(s.notes || '-')}</td>
-                                        <td>${s.certificateUrl ? `<a href="${s.certificateUrl}" target="_blank" class="cert-link">📄 Visa</a>` : '-'}</td>
-                                        <td>${escapeHtml(s.createdBy || s.updatedBy || 'Okänd')}</td>
-                                        <td><button onclick="deleteService('${s.id}')" class="action-btn">Ta bort</button></td>
-                                    </tr>
-                                `).join('')}
+                                ${instServices.map(s => {
+                                    let certHtml = '<span class="text-gray-400">-</span>';
+                                    if (s.certificateUrl && s.certificateUrl.trim() !== '') {
+                                        const fileIcon = getFileTypeIcon(s.certificateUrl);
+                                        const isPdf = isPDFUrl(s.certificateUrl);
+                                        const extraClass = isPdf ? 'pdf-link' : '';
+                                        certHtml = `<a href="${s.certificateUrl}" target="_blank" class="cert-link ${extraClass}">
+                                            <span>${fileIcon}</span> 
+                                            ${isPdf ? 'Visa PDF' : 'Visa certifikat'}
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                            </svg>
+                                        </a>`;
+                                    }
+                                    return `
+                                        <tr>
+                                            <td>${formatDate(s.date)}</td>
+                                            <td>${escapeHtml(s.notes || '-')}</td>
+                                            <td>${certHtml}</td>
+                                            <td>${escapeHtml(s.createdBy || s.updatedBy || 'Okänd')}</td>
+                                            <td><button onclick="deleteService('${s.id}')" class="action-btn">Ta bort</button></td>
+                                        </tr>
+                                    `;
+                                }).join('')}
                             </tbody>
                         </table>
                     </div>
@@ -649,7 +702,13 @@
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
-                                <tr><th>År-månad</th><th>Status</th><th>Anteckningar</th><th>Registrerad av</th><th></th></tr>
+                                <tr>
+                                    <th>År-månad</th>
+                                    <th>Status</th>
+                                    <th>Anteckningar</th>
+                                    <th>Registrerad av</th>
+                                    <th></th>
+                                </tr>
                             </thead>
                             <tbody>
                                 ${instCalibrations.map(c => `
@@ -802,12 +861,14 @@
                 const old = instruments.find(i => i.id === id);
                 await database.ref(`instruments/${id}`).update(data);
                 logAction('update', 'instrument', id, old, data);
+                showToast('✅ Instrument uppdaterat!');
             } else {
                 const newRef = database.ref('instruments').push();
                 data.createdAt = new Date().toISOString();
                 data.createdBy = currentUser.email;
                 await newRef.set(data);
                 logAction('create', 'instrument', newRef.key, null, data);
+                showToast('✅ Instrument skapat!');
             }
             closeModal('instrumentModal');
         }
@@ -821,6 +882,7 @@
                 const relatedCals = calibrations.filter(c => c.instrumentId === id);
                 relatedCals.forEach(c => database.ref(`calibrations/${c.id}`).remove());
                 logAction('delete', 'instrument', id, inst, null);
+                showToast('🗑️ Instrument borttaget');
             }
         }
 
@@ -835,6 +897,51 @@
             document.getElementById('certPreview').innerHTML = '';
             document.getElementById('uploadError').style.display = 'none';
             openModal('serviceModal');
+        }
+
+        function updateServicePreview(url) {
+            const previewDiv = document.getElementById('certPreview');
+            if (!url || url.trim() === '') {
+                previewDiv.innerHTML = '';
+                return;
+            }
+            
+            if (isPDFUrl(url)) {
+                previewDiv.innerHTML = `
+                    <div class="file-preview-container">
+                        <a href="${url}" target="_blank" class="file-preview-link">
+                            <span class="text-xl">📄</span>
+                            <span>Öppna PDF-certifikat</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                        </a>
+                        <button type="button" onclick="clearServiceFilePreview()" class="text-xs text-red-500 mt-2 block">Ta bort fil</button>
+                    </div>
+                `;
+            } else if (isImageUrl(url)) {
+                previewDiv.innerHTML = `
+                    <div class="file-preview-container">
+                        <img src="${url}" class="image-preview">
+                        <button type="button" onclick="clearServiceFilePreview()" class="text-xs text-red-500 mt-1">Ta bort bild</button>
+                    </div>
+                `;
+            } else {
+                previewDiv.innerHTML = `
+                    <div class="file-preview-container">
+                        <a href="${url}" target="_blank" class="file-preview-link">
+                            <span class="text-xl">📎</span>
+                            <span>Öppna fil</span>
+                        </a>
+                        <button type="button" onclick="clearServiceFilePreview()" class="text-xs text-red-500 mt-2 block">Ta bort fil</button>
+                    </div>
+                `;
+            }
+        }
+
+        function clearServiceFilePreview() {
+            document.getElementById('serviceCertUrl').value = '';
+            document.getElementById('certPreview').innerHTML = '';
         }
 
         async function saveService(e) {
@@ -855,14 +962,14 @@
                 const old = services.find(s => s.id === id);
                 await database.ref(`services/${id}`).update(data);
                 logAction('update', 'service', id, old, data);
-                alert('Service uppdaterad!');
+                showToast('✅ Service uppdaterad!');
             } else {
                 const newRef = database.ref('services').push();
                 data.createdAt = new Date().toISOString();
                 data.createdBy = currentUser.email;
                 await newRef.set(data);
                 logAction('create', 'service', newRef.key, null, data);
-                alert('Service sparad!');
+                showToast('✅ Service sparad!');
             }
             closeModal('serviceModal');
         }
@@ -872,6 +979,7 @@
                 const s = services.find(s => s.id === id);
                 database.ref(`services/${id}`).remove();
                 logAction('delete', 'service', id, s, null);
+                showToast('🗑️ Service borttagen');
             }
         }
 
@@ -905,14 +1013,14 @@
                 const old = calibrations.find(c => c.id === id);
                 await database.ref(`calibrations/${id}`).update(data);
                 logAction('update', 'calibration', id, old, data);
-                alert('Kalibrering uppdaterad!');
+                showToast('✅ Kalibrering uppdaterad!');
             } else {
                 const newRef = database.ref('calibrations').push();
                 data.createdAt = new Date().toISOString();
                 data.createdBy = currentUser.email;
                 await newRef.set(data);
                 logAction('create', 'calibration', newRef.key, null, data);
-                alert('Kalibrering sparad!');
+                showToast('✅ Kalibrering sparad!');
             }
             closeModal('calibrationModal');
         }
@@ -922,6 +1030,7 @@
                 const c = calibrations.find(c => c.id === id);
                 database.ref(`calibrations/${id}`).remove();
                 logAction('delete', 'calibration', id, c, null);
+                showToast('🗑️ Kalibrering borttagen');
             }
         }
 
@@ -959,44 +1068,44 @@
             document.getElementById('iconPreview').classList.add('hidden');
         }
 
-        // ------------------------------
-        // Cloudinary upload - CORRECTED to handle PDFs and images
-        // ------------------------------
+        // Cloudinary upload - Enhanced to handle PDFs and images properly
         function uploadToCloudinary(fieldId, previewId, isImage = false) {
             const errorDiv = document.getElementById('uploadError');
             if (errorDiv) errorDiv.style.display = 'none';
+            
             const widget = cloudinary.createUploadWidget({
                 cloudName: cloudName,
                 uploadPreset: uploadPreset,
-                resourceType: "auto",          // CRITICAL: allows PDFs (raw) and images
-                clientAllowedFormats: ["jpg", "jpeg", "png", "pdf"],  // accept PDFs
-                multiple: false
+                resourceType: "auto",
+                clientAllowedFormats: ["jpg", "jpeg", "png", "pdf", "doc", "docx"],
+                multiple: false,
+                maxFileSize: 10000000,
+                cropping: false
             }, (error, result) => {
                 if (error) {
                     console.error('Cloudinary error:', error);
                     if (errorDiv) {
-                        errorDiv.innerHTML = '❌ Uppladdning misslyckades. Kontrollera upload preset "instrument_certificates" i Cloudinary.';
+                        errorDiv.innerHTML = '❌ Uppladdning misslyckades. Kontrollera upload preset "instrument_certificats" i Cloudinary.';
                         errorDiv.style.display = 'block';
                     }
                     return;
                 }
+                
                 if (result && result.event === 'success') {
                     const url = result.info.secure_url;
+                    const resourceType = result.info.resource_type;
+                    const format = result.info.format;
+                    
                     document.getElementById(fieldId).value = url;
-                    if (previewId && isImage) {
-                        const previewDiv = document.getElementById(previewId);
-                        if (previewDiv) {
-                            previewDiv.innerHTML = `<img src="${url}" class="image-preview"><button type="button" onclick="clearIconPreview()" class="text-xs text-red-500 mt-1">Ta bort bild</button>`;
-                        }
+                    
+                    if (previewId === 'certPreview') {
+                        updateServicePreview(url);
+                    } else if (previewId === 'iconPreview') {
                         updateIconPreview();
-                    } else if (previewId) {
-                        const previewDiv = document.getElementById(previewId);
-                        if (previewDiv) {
-                            // For PDFs or other non-image files, show a clickable link
-                            previewDiv.innerHTML = `<a href="${url}" target="_blank" class="text-blue-500">📄 Öppna certifikat</a>`;
-                        }
                     }
+                    
                     if (errorDiv) errorDiv.style.display = 'none';
+                    showToast('✅ Fil uppladdad!');
                 }
             });
             widget.open();
@@ -1023,7 +1132,6 @@
 
             const wb = XLSX.utils.book_new();
 
-            // Instruments sheet
             const instData = filteredInstruments.map(inst => [
                 inst.equipmentNumber || '', inst.product || '', inst.serialNumber || '', inst.reference || '',
                 inst.deliveryDate || '', inst.next_service || '', inst.type === 'totalstation' ? (inst.ccp || '') : '',
@@ -1036,7 +1144,6 @@
             ], ...instData]);
             XLSX.utils.book_append_sheet(wb, wsInstr, 'Instrument');
 
-            // Services sheet
             const servData = filteredServices.map(s => {
                 const inst = instruments.find(i => String(i.id) === String(s.instrumentId));
                 return [inst ? inst.product || inst.name : 'Okänd', s.date, s.certificateUrl || '', s.notes || ''];
@@ -1044,7 +1151,6 @@
             const wsServ = XLSX.utils.aoa_to_sheet([['Instrument', 'Datum', 'Certifikat', 'Anteckningar'], ...servData]);
             XLSX.utils.book_append_sheet(wb, wsServ, 'Service');
 
-            // Calibrations sheet
             if (filteredCalibrations.length > 0) {
                 const calData = filteredCalibrations.map(c => {
                     const inst = instruments.find(i => String(i.id) === String(c.instrumentId));
@@ -1055,12 +1161,12 @@
             }
 
             XLSX.writeFile(wb, `Instrumentrapport_${new Date().toISOString().slice(0,10)}.xlsx`);
+            showToast('📊 Rapport exporterad!');
         }
 
         function exportFull() {
             const wb = XLSX.utils.book_new();
 
-            // Instruments sheet
             const instData = instruments.map(inst => [
                 inst.equipmentNumber || '', inst.product || '', inst.serialNumber || '', inst.reference || '',
                 inst.deliveryDate || '', inst.next_service || '', inst.type === 'totalstation' ? (inst.ccp || '') : '',
@@ -1073,7 +1179,6 @@
             ], ...instData]);
             XLSX.utils.book_append_sheet(wb, wsInstr, 'Instrument');
 
-            // Services sheet
             const servData = services.map(s => {
                 const inst = instruments.find(i => String(i.id) === String(s.instrumentId));
                 return [inst ? inst.product || inst.name : 'Okänd', s.date, s.certificateUrl || '', s.notes || ''];
@@ -1081,7 +1186,6 @@
             const wsServ = XLSX.utils.aoa_to_sheet([['Instrument', 'Datum', 'Certifikat', 'Anteckningar'], ...servData]);
             XLSX.utils.book_append_sheet(wb, wsServ, 'Service');
 
-            // Calibrations sheet
             const calData = calibrations.map(c => {
                 const inst = instruments.find(i => String(i.id) === String(c.instrumentId));
                 return [inst ? inst.product || inst.name : 'Okänd', c.year, c.month, c.passed ? 'Ja' : 'Nej', c.notes || ''];
@@ -1090,6 +1194,7 @@
             XLSX.utils.book_append_sheet(wb, wsCal, 'Kalibrering');
 
             XLSX.writeFile(wb, `All_instrumentdata_${new Date().toISOString().slice(0,10)}.xlsx`);
+            showToast('📁 All data exporterad!');
         }
 
         // ------------------------------
@@ -1134,10 +1239,29 @@
         // ------------------------------
         // Utility functions
         // ------------------------------
-        function escapeHtml(str) { return str ? str.replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}) : ''; }
-        function formatDate(iso) { return iso ? new Date(iso).toLocaleDateString('sv-SE') : ''; }
-        function openModal(id) { document.getElementById(id).style.display = 'block'; document.body.style.overflow = 'hidden'; }
-        function closeModal(id) { document.getElementById(id).style.display = 'none'; document.body.style.overflow = 'auto'; }
+        function escapeHtml(str) { 
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m){
+                if(m==='&') return '&amp;'; 
+                if(m==='<') return '&lt;'; 
+                if(m==='>') return '&gt;'; 
+                return m;
+            }); 
+        }
+        
+        function formatDate(iso) { 
+            return iso ? new Date(iso).toLocaleDateString('sv-SE') : ''; 
+        }
+        
+        function openModal(id) { 
+            document.getElementById(id).style.display = 'block'; 
+            document.body.style.overflow = 'hidden'; 
+        }
+        
+        function closeModal(id) { 
+            document.getElementById(id).style.display = 'none'; 
+            document.body.style.overflow = 'auto'; 
+        }
 
         // ------------------------------
         // Authentication
@@ -1147,6 +1271,7 @@
             const pwd = document.getElementById('loginPassword').value;
             auth.signInWithEmailAndPassword(email, pwd).catch(err => showLoginMessage(err.message, true));
         }
+        
         function register() {
             const email = document.getElementById('registerEmail').value;
             const pwd = document.getElementById('registerPassword').value;
@@ -1157,6 +1282,7 @@
                 .then(cred => database.ref('users/' + cred.user.uid).set({ email, name, createdAt: new Date().toISOString() }))
                 .catch(err => showLoginMessage(err.message, true));
         }
+        
         function showLoginMessage(msg, isError) {
             const div = document.getElementById('loginMessage');
             div.textContent = msg;
@@ -1164,7 +1290,11 @@
             div.classList.remove('hidden');
             setTimeout(() => div.classList.add('hidden'), 3000);
         }
-        function logout() { if (currentUser) logAction('logout', 'user', currentUser.uid, null, { email: currentUser.email }); auth.signOut(); }
+        
+        function logout() { 
+            if (currentUser) logAction('logout', 'user', currentUser.uid, null, { email: currentUser.email }); 
+            auth.signOut(); 
+        }
 
         auth.onAuthStateChanged(user => {
             if (user) {
@@ -1185,8 +1315,14 @@
         // ------------------------------
         document.getElementById('loginBtn').addEventListener('click', login);
         document.getElementById('registerBtn').addEventListener('click', register);
-        document.getElementById('showRegisterBtn').addEventListener('click', () => { document.getElementById('loginForm').classList.add('hidden'); document.getElementById('registerForm').classList.remove('hidden'); });
-        document.getElementById('backToLoginBtn').addEventListener('click', () => { document.getElementById('loginForm').classList.remove('hidden'); document.getElementById('registerForm').classList.add('hidden'); });
+        document.getElementById('showRegisterBtn').addEventListener('click', () => { 
+            document.getElementById('loginForm').classList.add('hidden'); 
+            document.getElementById('registerForm').classList.remove('hidden'); 
+        });
+        document.getElementById('backToLoginBtn').addEventListener('click', () => { 
+            document.getElementById('loginForm').classList.remove('hidden'); 
+            document.getElementById('registerForm').classList.add('hidden'); 
+        });
         document.getElementById('newInstrumentBtn').addEventListener('click', newInstrument);
         document.getElementById('instrumentForm').addEventListener('submit', saveInstrument);
         document.getElementById('serviceForm').addEventListener('submit', saveService);
@@ -1198,6 +1334,9 @@
         document.getElementById('exportFullBtn').addEventListener('click', exportFull);
         document.getElementById('instIconUrl').addEventListener('input', updateIconPreview);
         document.getElementById('instType').addEventListener('change', toggleFieldsByType);
+        document.getElementById('serviceCertUrl').addEventListener('input', function() {
+            updateServicePreview(this.value);
+        });
 
         document.addEventListener('keydown', e => {
             if (e.ctrlKey && e.shiftKey && e.key === 'L') {
@@ -1208,9 +1347,23 @@
                 document.querySelectorAll('.modal').forEach(m => { if (m.style.display === 'block') closeModal(m.id); });
             }
         });
+        
         window.onclick = function(e) {
             if (e.target.classList.contains('modal')) closeModal(e.target.id);
         };
+        
+        // Make functions available globally for onclick handlers
+        window.closeModal = closeModal;
+        window.logout = logout;
+        window.editInstrument = editInstrument;
+        window.deleteInstrument = deleteInstrument;
+        window.addService = addService;
+        window.addCalibration = addCalibration;
+        window.deleteService = deleteService;
+        window.deleteCalibration = deleteCalibration;
+        window.refreshInstrumentDetails = refreshInstrumentDetails;
+        window.clearIconPreview = clearIconPreview;
+        window.clearServiceFilePreview = clearServiceFilePreview;
     </script>
 </body>
 </html>
