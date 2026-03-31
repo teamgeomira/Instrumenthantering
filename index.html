@@ -46,18 +46,18 @@
         .data-table th { background-color: #f9fafb; font-weight: 600; color: #374151; }
         .data-table tr:hover { background-color: #f9fafb; }
         .action-btn { color: #ef4444; font-size: 0.75rem; cursor: pointer; text-decoration: underline; margin-left: 12px; }
-        .cert-link { color: #3b82f6; text-decoration: underline; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 4px; background-color: #eff6ff; padding: 4px 8px; border-radius: 6px; transition: all 0.2s; }
-        .cert-link:hover { background-color: #dbeafe; }
-        .pdf-link { background-color: #fee2e2; color: #dc2626; }
-        .pdf-link:hover { background-color: #fecaca; }
+        .cert-link { display: inline-flex; align-items: center; gap: 6px; background-color: #eff6ff; color: #1e40af; padding: 4px 10px; border-radius: 6px; text-decoration: none; font-size: 0.75rem; font-weight: 500; transition: all 0.2s; }
+        .cert-link:hover { background-color: #dbeafe; transform: translateY(-1px); }
+        .cert-link-pdf { background-color: #fee2e2; color: #991b1b; }
+        .cert-link-pdf:hover { background-color: #fecaca; }
         .toast-notification { position: fixed; bottom: 20px; right: 20px; background-color: #10b981; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 9999; animation: slideIn 0.3s ease-out; }
         @keyframes slideIn {
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
         .file-preview-container { margin-top: 12px; padding: 12px; background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
-        .file-preview-link { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background-color: white; border-radius: 6px; text-decoration: none; color: #3b82f6; border: 1px solid #e2e8f0; transition: all 0.2s; }
-        .file-preview-link:hover { background-color: #eff6ff; border-color: #3b82f6; }
+        .pdf-preview-link { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; background-color: white; border-radius: 8px; text-decoration: none; color: #dc2626; border: 1px solid #e5e7eb; transition: all 0.2s; }
+        .pdf-preview-link:hover { background-color: #fee2e2; border-color: #dc2626; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
@@ -426,6 +426,22 @@
             return { color: 'green', text: 'Godkänd' };
         }
 
+        // Función para corregir URLs de Cloudinary para PDFs
+        function fixCloudinaryUrl(url) {
+            if (!url) return url;
+            // Si es un PDF y tiene /image/upload/, cambiarlo a /upload/ para que se sirva correctamente
+            if (url.toLowerCase().includes('.pdf') && url.includes('/image/upload/')) {
+                return url.replace('/image/upload/', '/upload/');
+            }
+            return url;
+        }
+
+        function isPDFUrl(url) {
+            if (!url) return false;
+            const cleanUrl = fixCloudinaryUrl(url);
+            return cleanUrl.toLowerCase().includes('.pdf') || cleanUrl.includes('/upload/') && cleanUrl.toLowerCase().includes('pdf');
+        }
+
         function showToast(message) {
             const toast = document.createElement('div');
             toast.className = 'toast-notification';
@@ -435,25 +451,6 @@
                 toast.style.opacity = '0';
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
-        }
-
-        function isPDFUrl(url) {
-            if (!url) return false;
-            return url.toLowerCase().includes('.pdf') || 
-                   url.includes('/pdf/') || 
-                   url.includes('raw/upload') ||
-                   url.match(/\.pdf(\?|$)/i);
-        }
-
-        function isImageUrl(url) {
-            if (!url) return false;
-            return url.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/i);
-        }
-
-        function getFileTypeIcon(url) {
-            if (isPDFUrl(url)) return '📄';
-            if (isImageUrl(url)) return '🖼️';
-            return '📎';
         }
 
         // Update alert summary cards
@@ -645,7 +642,7 @@
             const serviceStatus = getServiceStatus(inst.next_service);
             const typeText = inst.type === 'gps' ? 'GPS' : 'Total Station';
 
-            // Build services table with improved certificate display
+            // Build services table with improved certificate display for PDFs
             let servicesHtml = '';
             if (instServices.length === 0) {
                 servicesHtml = '<p class="text-gray-500 italic mt-2">Inga serviceregistreringar.</p>';
@@ -666,11 +663,10 @@
                                 ${instServices.map(s => {
                                     let certHtml = '<span class="text-gray-400">-</span>';
                                     if (s.certificateUrl && s.certificateUrl.trim() !== '') {
-                                        const fileIcon = getFileTypeIcon(s.certificateUrl);
+                                        const fixedUrl = fixCloudinaryUrl(s.certificateUrl);
                                         const isPdf = isPDFUrl(s.certificateUrl);
-                                        const extraClass = isPdf ? 'pdf-link' : '';
-                                        certHtml = `<a href="${s.certificateUrl}" target="_blank" class="cert-link ${extraClass}">
-                                            <span>${fileIcon}</span> 
+                                        certHtml = `<a href="${fixedUrl}" target="_blank" class="cert-link ${isPdf ? 'cert-link-pdf' : ''}">
+                                            <span>${isPdf ? '📄' : '🖼️'}</span> 
                                             ${isPdf ? 'Visa PDF' : 'Visa certifikat'}
                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -906,10 +902,13 @@
                 return;
             }
             
-            if (isPDFUrl(url)) {
+            const fixedUrl = fixCloudinaryUrl(url);
+            const isPdf = isPDFUrl(url);
+            
+            if (isPdf) {
                 previewDiv.innerHTML = `
                     <div class="file-preview-container">
-                        <a href="${url}" target="_blank" class="file-preview-link">
+                        <a href="${fixedUrl}" target="_blank" class="pdf-preview-link">
                             <span class="text-xl">📄</span>
                             <span>Öppna PDF-certifikat</span>
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -919,20 +918,17 @@
                         <button type="button" onclick="clearServiceFilePreview()" class="text-xs text-red-500 mt-2 block">Ta bort fil</button>
                     </div>
                 `;
-            } else if (isImageUrl(url)) {
+            } else if (fixedUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)/)) {
                 previewDiv.innerHTML = `
                     <div class="file-preview-container">
-                        <img src="${url}" class="image-preview">
+                        <img src="${fixedUrl}" class="image-preview">
                         <button type="button" onclick="clearServiceFilePreview()" class="text-xs text-red-500 mt-1">Ta bort bild</button>
                     </div>
                 `;
             } else {
                 previewDiv.innerHTML = `
                     <div class="file-preview-container">
-                        <a href="${url}" target="_blank" class="file-preview-link">
-                            <span class="text-xl">📎</span>
-                            <span>Öppna fil</span>
-                        </a>
+                        <a href="${fixedUrl}" target="_blank" class="cert-link">🔗 Öppna fil</a>
                         <button type="button" onclick="clearServiceFilePreview()" class="text-xs text-red-500 mt-2 block">Ta bort fil</button>
                     </div>
                 `;
@@ -948,10 +944,12 @@
             e.preventDefault();
             const id = document.getElementById('serviceId').value;
             const instrumentId = document.getElementById('serviceInstrumentId').value;
+            const certificateUrl = document.getElementById('serviceCertUrl').value;
+            
             const data = {
                 instrumentId,
                 date: document.getElementById('serviceDate').value,
-                certificateUrl: document.getElementById('serviceCertUrl').value,
+                certificateUrl: certificateUrl,
                 notes: document.getElementById('serviceNotes').value,
                 updatedAt: new Date().toISOString(),
                 updatedBy: currentUser.email
@@ -1068,7 +1066,7 @@
             document.getElementById('iconPreview').classList.add('hidden');
         }
 
-        // Cloudinary upload - Enhanced to handle PDFs and images properly
+        // Cloudinary upload - Fixed for PDFs
         function uploadToCloudinary(fieldId, previewId, isImage = false) {
             const errorDiv = document.getElementById('uploadError');
             if (errorDiv) errorDiv.style.display = 'none';
@@ -1077,7 +1075,7 @@
                 cloudName: cloudName,
                 uploadPreset: uploadPreset,
                 resourceType: "auto",
-                clientAllowedFormats: ["jpg", "jpeg", "png", "pdf", "doc", "docx"],
+                clientAllowedFormats: ["jpg", "jpeg", "png", "pdf"],
                 multiple: false,
                 maxFileSize: 10000000,
                 cropping: false
@@ -1085,16 +1083,20 @@
                 if (error) {
                     console.error('Cloudinary error:', error);
                     if (errorDiv) {
-                        errorDiv.innerHTML = '❌ Uppladdning misslyckades. Kontrollera upload preset "instrument_certificats" i Cloudinary.';
+                        errorDiv.innerHTML = '❌ Uppladdning misslyckades. Kontrollera upload preset "' + uploadPreset + '" i Cloudinary.';
                         errorDiv.style.display = 'block';
                     }
                     return;
                 }
                 
                 if (result && result.event === 'success') {
-                    const url = result.info.secure_url;
-                    const resourceType = result.info.resource_type;
+                    let url = result.info.secure_url;
                     const format = result.info.format;
+                    
+                    // Corregir URL si es PDF (cambiar /image/upload/ a /upload/)
+                    if (format === 'pdf' && url.includes('/image/upload/')) {
+                        url = url.replace('/image/upload/', '/upload/');
+                    }
                     
                     document.getElementById(fieldId).value = url;
                     
