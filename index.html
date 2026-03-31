@@ -1092,10 +1092,16 @@
                 if (result && result.event === 'success') {
                     let url = result.info.secure_url;
                     const format = result.info.format;
+                    const resourceType = result.info.resource_type;
                     
-                    // Corregir URL si es PDF (cambiar /image/upload/ a /upload/)
-                    if (format === 'pdf' && url.includes('/image/upload/')) {
-                        url = url.replace('/image/upload/', '/upload/');
+                    // CORRECCIÓN: Si es PDF, asegurar que la URL tenga /raw/upload/
+                    if (format === 'pdf') {
+                        // Reemplazar cualquier variante por /raw/upload/
+                        if (url.includes('/image/upload/')) {
+                            url = url.replace('/image/upload/', '/raw/upload/');
+                        } else if (url.includes('/upload/') && !url.includes('/raw/')) {
+                            url = url.replace('/upload/', '/raw/upload/');
+                        }
                     }
                     
                     document.getElementById(fieldId).value = url;
@@ -1107,7 +1113,12 @@
                     }
                     
                     if (errorDiv) errorDiv.style.display = 'none';
-                    showToast('✅ Fil uppladdad!');
+                    
+                    const toast = document.createElement('div');
+                    toast.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+                    toast.innerHTML = '✅ Fil uppladdad!';
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3000);
                 }
             });
             widget.open();
