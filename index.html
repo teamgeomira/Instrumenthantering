@@ -48,16 +48,12 @@
         .action-btn { color: #ef4444; font-size: 0.75rem; cursor: pointer; text-decoration: underline; margin-left: 12px; }
         .cert-link { display: inline-flex; align-items: center; gap: 6px; background-color: #eff6ff; color: #1e40af; padding: 4px 10px; border-radius: 6px; text-decoration: none; font-size: 0.75rem; font-weight: 500; transition: all 0.2s; }
         .cert-link:hover { background-color: #dbeafe; transform: translateY(-1px); }
-        .cert-link-pdf { background-color: #fee2e2; color: #991b1b; }
-        .cert-link-pdf:hover { background-color: #fecaca; }
         .toast-notification { position: fixed; bottom: 20px; right: 20px; background-color: #10b981; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 9999; animation: slideIn 0.3s ease-out; }
         @keyframes slideIn {
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
         .file-preview-container { margin-top: 12px; padding: 12px; background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
-        .pdf-preview-link { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; background-color: white; border-radius: 8px; text-decoration: none; color: #dc2626; border: 1px solid #e5e7eb; transition: all 0.2s; }
-        .pdf-preview-link:hover { background-color: #fee2e2; border-color: #dc2626; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
@@ -426,20 +422,9 @@
             return { color: 'green', text: 'Godkänd' };
         }
 
-        // Función para corregir URLs de Cloudinary para PDFs
-        function fixCloudinaryUrl(url) {
-            if (!url) return url;
-            // Si es un PDF y tiene /image/upload/, cambiarlo a /upload/ para que se sirva correctamente
-            if (url.toLowerCase().includes('.pdf') && url.includes('/image/upload/')) {
-                return url.replace('/image/upload/', '/upload/');
-            }
-            return url;
-        }
-
         function isPDFUrl(url) {
             if (!url) return false;
-            const cleanUrl = fixCloudinaryUrl(url);
-            return cleanUrl.toLowerCase().includes('.pdf') || cleanUrl.includes('/upload/') && cleanUrl.toLowerCase().includes('pdf');
+            return url.toLowerCase().includes('.pdf');
         }
 
         function showToast(message) {
@@ -642,7 +627,7 @@
             const serviceStatus = getServiceStatus(inst.next_service);
             const typeText = inst.type === 'gps' ? 'GPS' : 'Total Station';
 
-            // Build services table with improved certificate display for PDFs
+            // Build services table with certificate links
             let servicesHtml = '';
             if (instServices.length === 0) {
                 servicesHtml = '<p class="text-gray-500 italic mt-2">Inga serviceregistreringar.</p>';
@@ -663,9 +648,8 @@
                                 ${instServices.map(s => {
                                     let certHtml = '<span class="text-gray-400">-</span>';
                                     if (s.certificateUrl && s.certificateUrl.trim() !== '') {
-                                        const fixedUrl = fixCloudinaryUrl(s.certificateUrl);
                                         const isPdf = isPDFUrl(s.certificateUrl);
-                                        certHtml = `<a href="${fixedUrl}" target="_blank" class="cert-link ${isPdf ? 'cert-link-pdf' : ''}">
+                                        certHtml = `<a href="${s.certificateUrl}" target="_blank" class="cert-link">
                                             <span>${isPdf ? '📄' : '🖼️'}</span> 
                                             ${isPdf ? 'Visa PDF' : 'Visa certifikat'}
                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -902,13 +886,12 @@
                 return;
             }
             
-            const fixedUrl = fixCloudinaryUrl(url);
             const isPdf = isPDFUrl(url);
             
             if (isPdf) {
                 previewDiv.innerHTML = `
                     <div class="file-preview-container">
-                        <a href="${fixedUrl}" target="_blank" class="pdf-preview-link">
+                        <a href="${url}" target="_blank" class="cert-link">
                             <span class="text-xl">📄</span>
                             <span>Öppna PDF-certifikat</span>
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -918,17 +901,17 @@
                         <button type="button" onclick="clearServiceFilePreview()" class="text-xs text-red-500 mt-2 block">Ta bort fil</button>
                     </div>
                 `;
-            } else if (fixedUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)/)) {
+            } else if (url.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)/)) {
                 previewDiv.innerHTML = `
                     <div class="file-preview-container">
-                        <img src="${fixedUrl}" class="image-preview">
+                        <img src="${url}" class="image-preview">
                         <button type="button" onclick="clearServiceFilePreview()" class="text-xs text-red-500 mt-1">Ta bort bild</button>
                     </div>
                 `;
             } else {
                 previewDiv.innerHTML = `
                     <div class="file-preview-container">
-                        <a href="${fixedUrl}" target="_blank" class="cert-link">🔗 Öppna fil</a>
+                        <a href="${url}" target="_blank" class="cert-link">🔗 Öppna fil</a>
                         <button type="button" onclick="clearServiceFilePreview()" class="text-xs text-red-500 mt-2 block">Ta bort fil</button>
                     </div>
                 `;
@@ -1066,7 +1049,7 @@
             document.getElementById('iconPreview').classList.add('hidden');
         }
 
-        // Cloudinary upload - Fixed for PDFs
+        // Cloudinary upload - Using the working format (image/upload)
         function uploadToCloudinary(fieldId, previewId, isImage = false) {
             const errorDiv = document.getElementById('uploadError');
             if (errorDiv) errorDiv.style.display = 'none';
@@ -1090,19 +1073,8 @@
                 }
                 
                 if (result && result.event === 'success') {
-                    let url = result.info.secure_url;
-                    const format = result.info.format;
-                    const resourceType = result.info.resource_type;
-                    
-                    // CORRECCIÓN: Si es PDF, asegurar que la URL tenga /raw/upload/
-                    if (format === 'pdf') {
-                        // Reemplazar cualquier variante por /raw/upload/
-                        if (url.includes('/image/upload/')) {
-                            url = url.replace('/image/upload/', '/raw/upload/');
-                        } else if (url.includes('/upload/') && !url.includes('/raw/')) {
-                            url = url.replace('/upload/', '/raw/upload/');
-                        }
-                    }
+                    // Use the URL exactly as Cloudinary returns it
+                    const url = result.info.secure_url;
                     
                     document.getElementById(fieldId).value = url;
                     
@@ -1113,12 +1085,7 @@
                     }
                     
                     if (errorDiv) errorDiv.style.display = 'none';
-                    
-                    const toast = document.createElement('div');
-                    toast.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
-                    toast.innerHTML = '✅ Fil uppladdad!';
-                    document.body.appendChild(toast);
-                    setTimeout(() => toast.remove(), 3000);
+                    showToast('✅ Fil uppladdad!');
                 }
             });
             widget.open();
