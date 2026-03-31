@@ -17,6 +17,7 @@
         .modal-content { background: white; margin: 5% auto; padding: 20px; max-width: 800px; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
         .btn-gradient-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
         .btn-gradient-success { background: linear-gradient(135deg, #10b981, #34d399); color: white; }
+        .btn-gradient-warning { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
         .instrument-card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; transition: all 0.2s; background: white; cursor: pointer; }
         .instrument-card:hover { box-shadow: 0 8px 20px rgba(0,0,0,0.1); transform: translateY(-2px); }
         .log-entry { background: #f9fafb; border-left: 4px solid #3b82f6; margin-bottom: 12px; padding: 12px; border-radius: 8px; }
@@ -46,6 +47,7 @@
         .data-table th { background-color: #f9fafb; font-weight: 600; color: #374151; }
         .data-table tr:hover { background-color: #f9fafb; }
         .action-btn { color: #ef4444; font-size: 0.75rem; cursor: pointer; text-decoration: underline; margin-left: 12px; }
+        .edit-btn { color: #f59e0b; font-size: 0.75rem; cursor: pointer; text-decoration: underline; margin-left: 12px; }
         .cert-link { display: inline-flex; align-items: center; gap: 6px; background-color: #eff6ff; color: #1e40af; padding: 4px 10px; border-radius: 6px; text-decoration: none; font-size: 0.75rem; font-weight: 500; transition: all 0.2s; }
         .cert-link:hover { background-color: #dbeafe; transform: translateY(-1px); }
         .toast-notification { position: fixed; bottom: 20px; right: 20px; background-color: #10b981; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 9999; animation: slideIn 0.3s ease-out; }
@@ -54,6 +56,7 @@
             to { transform: translateX(0); opacity: 1; }
         }
         .file-preview-container { margin-top: 12px; padding: 12px; background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
+        .action-buttons { display: flex; gap: 8px; align-items: center; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
@@ -257,7 +260,7 @@
     <div id="serviceModal" class="modal">
         <div class="modal-content">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold">Lägg till service</h2>
+                <h2 id="serviceModalTitle" class="text-xl font-bold">Lägg till service</h2>
                 <button onclick="closeModal('serviceModal')" class="text-gray-500 text-2xl">&times;</button>
             </div>
             <form id="serviceForm">
@@ -292,7 +295,7 @@
     <div id="calibrationModal" class="modal">
         <div class="modal-content">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold">Lägg till kalibrering</h2>
+                <h2 id="calibrationModalTitle" class="text-xl font-bold">Lägg till kalibrering</h2>
                 <button onclick="closeModal('calibrationModal')" class="text-gray-500 text-2xl">&times;</button>
             </div>
             <form id="calibrationForm">
@@ -627,7 +630,7 @@
             const serviceStatus = getServiceStatus(inst.next_service);
             const typeText = inst.type === 'gps' ? 'GPS' : 'Total Station';
 
-            // Build services table with certificate links
+            // Build services table with certificate links and edit button
             let servicesHtml = '';
             if (instServices.length === 0) {
                 servicesHtml = '<p class="text-gray-500 italic mt-2">Inga serviceregistreringar.</p>';
@@ -636,13 +639,7 @@
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
-                                <tr>
-                                    <th>Datum</th>
-                                    <th>Anteckningar</th>
-                                    <th>Certifikat</th>
-                                    <th>Registrerad av</th>
-                                    <th></th>
-                                </tr>
+                                32<th>Datum</th><th>Anteckningar</th><th>Certifikat</th><th>Registrerad av</th><th>Åtgärder</th>
                             </thead>
                             <tbody>
                                 ${instServices.map(s => {
@@ -663,7 +660,10 @@
                                             <td>${escapeHtml(s.notes || '-')}</td>
                                             <td>${certHtml}</td>
                                             <td>${escapeHtml(s.createdBy || s.updatedBy || 'Okänd')}</td>
-                                            <td><button onclick="deleteService('${s.id}')" class="action-btn">Ta bort</button></td>
+                                            <td class="action-buttons">
+                                                <button onclick="editService('${s.id}')" class="edit-btn">✏️ Redigera</button>
+                                                <button onclick="deleteService('${s.id}')" class="action-btn">🗑️ Ta bort</button>
+                                            </td>
                                         </tr>
                                     `;
                                 }).join('')}
@@ -673,7 +673,7 @@
                 `;
             }
 
-            // Build calibrations table
+            // Build calibrations table with edit button
             let calibrationsHtml = '';
             if (instCalibrations.length === 0) {
                 calibrationsHtml = '<p class="text-gray-500 italic mt-2">Inga kalibreringsposter.</p>';
@@ -682,13 +682,7 @@
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
-                                <tr>
-                                    <th>År-månad</th>
-                                    <th>Status</th>
-                                    <th>Anteckningar</th>
-                                    <th>Registrerad av</th>
-                                    <th></th>
-                                </tr>
+                                <tr><th>År-månad</th><th>Status</th><th>Anteckningar</th><th>Registrerad av</th><th>Åtgärder</th></tr>
                             </thead>
                             <tbody>
                                 ${instCalibrations.map(c => `
@@ -697,7 +691,10 @@
                                         <td>${c.passed ? '✅ Godkänd' : '❌ Ej godkänd'}</td>
                                         <td>${escapeHtml(c.notes || '-')}</td>
                                         <td>${escapeHtml(c.createdBy || c.updatedBy || 'Okänd')}</td>
-                                        <td><button onclick="deleteCalibration('${c.id}')" class="action-btn">Ta bort</button></td>
+                                        <td class="action-buttons">
+                                            <button onclick="editCalibration('${c.id}')" class="edit-btn">✏️ Redigera</button>
+                                            <button onclick="deleteCalibration('${c.id}')" class="action-btn">🗑️ Ta bort</button>
+                                        </td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -722,11 +719,7 @@
 
             const detailHtml = `
                 <div class="space-y-6">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <span class="instrument-type-badge ${inst.type === 'gps' ? 'type-gps' : 'type-totalstation'}">${typeText}</span>
-                            <h2 class="text-xl font-bold mt-1">${escapeHtml(getInstrumentDisplayName(inst))}</h2>
-                        </div>
+                    <div class="flex justify-end items-start">
                         <button onclick="refreshInstrumentDetails()" class="refresh-btn">🔄 Uppdatera</button>
                     </div>
 
@@ -766,7 +759,13 @@
                 </div>
             `;
 
-            document.getElementById('detailTitle').innerHTML = escapeHtml(getInstrumentDisplayName(inst));
+            // Mostrar el título en el header del modal con el tipo y nombre juntos
+            document.getElementById('detailTitle').innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="instrument-type-badge ${inst.type === 'gps' ? 'type-gps' : 'type-totalstation'}">${typeText}</span>
+                    <span class="text-xl font-bold">${escapeHtml(getInstrumentDisplayName(inst))}</span>
+                </div>
+            `;
             document.getElementById('detailContent').innerHTML = detailHtml;
         }
 
@@ -774,6 +773,11 @@
         // Instrument CRUD
         // ------------------------------
         function newInstrument() {
+            // Cerrar modal de detalles si está abierto
+            const detailModal = document.getElementById('instrumentDetailModal');
+            if (detailModal && detailModal.style.display === 'block') {
+                closeModal('instrumentDetailModal');
+            }
             document.getElementById('instrumentModalTitle').innerText = 'Nytt instrument';
             document.getElementById('instrumentForm').reset();
             document.getElementById('instrumentId').value = '';
@@ -784,6 +788,12 @@
         }
 
         function editInstrument(id) {
+            // Cerrar modal de detalles si está abierto
+            const detailModal = document.getElementById('instrumentDetailModal');
+            if (detailModal && detailModal.style.display === 'block') {
+                closeModal('instrumentDetailModal');
+            }
+            
             const inst = instruments.find(i => i.id === id);
             if (!inst) return;
             document.getElementById('instrumentModalTitle').innerText = 'Redigera instrument';
@@ -867,15 +877,50 @@
         }
 
         // ------------------------------
-        // Service CRUD
+        // Service CRUD (with edit function)
         // ------------------------------
         function addService(instrumentId) {
+            // Cerrar modal de detalles si está abierto
+            const detailModal = document.getElementById('instrumentDetailModal');
+            if (detailModal && detailModal.style.display === 'block') {
+                closeModal('instrumentDetailModal');
+            }
+            
+            document.getElementById('serviceModalTitle').innerText = 'Lägg till service';
             document.getElementById('serviceForm').reset();
             document.getElementById('serviceInstrumentId').value = instrumentId;
             document.getElementById('serviceId').value = '';
             document.getElementById('serviceCertUrl').value = '';
             document.getElementById('certPreview').innerHTML = '';
             document.getElementById('uploadError').style.display = 'none';
+            openModal('serviceModal');
+        }
+
+        function editService(serviceId) {
+            // Cerrar modal de detalles si está abierto
+            const detailModal = document.getElementById('instrumentDetailModal');
+            if (detailModal && detailModal.style.display === 'block') {
+                closeModal('instrumentDetailModal');
+            }
+            
+            const service = services.find(s => s.id === serviceId);
+            if (!service) return;
+            
+            document.getElementById('serviceModalTitle').innerText = 'Redigera service';
+            document.getElementById('serviceId').value = service.id;
+            document.getElementById('serviceInstrumentId').value = service.instrumentId;
+            document.getElementById('serviceDate').value = service.date || '';
+            document.getElementById('serviceCertUrl').value = service.certificateUrl || '';
+            document.getElementById('serviceNotes').value = service.notes || '';
+            document.getElementById('uploadError').style.display = 'none';
+            
+            // Visa preview om det finns certifikat
+            if (service.certificateUrl) {
+                updateServicePreview(service.certificateUrl);
+            } else {
+                document.getElementById('certPreview').innerHTML = '';
+            }
+            
             openModal('serviceModal');
         }
 
@@ -965,13 +1010,41 @@
         }
 
         // ------------------------------
-        // Calibration CRUD
+        // Calibration CRUD (with edit function)
         // ------------------------------
         function addCalibration(instrumentId) {
+            // Cerrar modal de detalles si está abierto
+            const detailModal = document.getElementById('instrumentDetailModal');
+            if (detailModal && detailModal.style.display === 'block') {
+                closeModal('instrumentDetailModal');
+            }
+            
+            document.getElementById('calibrationModalTitle').innerText = 'Lägg till kalibrering';
             document.getElementById('calibrationForm').reset();
             document.getElementById('calInstrumentId').value = instrumentId;
             document.getElementById('calId').value = '';
             document.getElementById('calYear').value = new Date().getFullYear();
+            openModal('calibrationModal');
+        }
+
+        function editCalibration(calibrationId) {
+            // Cerrar modal de detalles si está abierto
+            const detailModal = document.getElementById('instrumentDetailModal');
+            if (detailModal && detailModal.style.display === 'block') {
+                closeModal('instrumentDetailModal');
+            }
+            
+            const calibration = calibrations.find(c => c.id === calibrationId);
+            if (!calibration) return;
+            
+            document.getElementById('calibrationModalTitle').innerText = 'Redigera kalibrering';
+            document.getElementById('calId').value = calibration.id;
+            document.getElementById('calInstrumentId').value = calibration.instrumentId;
+            document.getElementById('calYear').value = calibration.year || new Date().getFullYear();
+            document.getElementById('calMonth').value = calibration.month || 1;
+            document.getElementById('calPassed').checked = calibration.passed || false;
+            document.getElementById('calNotes').value = calibration.notes || '';
+            
             openModal('calibrationModal');
         }
 
@@ -1338,7 +1411,9 @@
         window.editInstrument = editInstrument;
         window.deleteInstrument = deleteInstrument;
         window.addService = addService;
+        window.editService = editService;
         window.addCalibration = addCalibration;
+        window.editCalibration = editCalibration;
         window.deleteService = deleteService;
         window.deleteCalibration = deleteCalibration;
         window.refreshInstrumentDetails = refreshInstrumentDetails;
